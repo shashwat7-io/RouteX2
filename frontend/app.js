@@ -39,15 +39,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const themeIcon = document.getElementById('theme-icon');
 
   function initTheme() {
-    const savedTheme = localStorage.getItem('routex-theme') || 'dark';
-    if (savedTheme === 'light') {
-      document.body.classList.add('light-theme');
-      if (themeText) themeText.textContent = 'Light';
-      if (themeIcon) themeIcon.setAttribute('data-lucide', 'sun');
-    } else {
+    const savedTheme = localStorage.getItem('routex-theme');
+    // Default to 'light' theme as in original UI
+    if (savedTheme === 'dark') {
       document.body.classList.remove('light-theme');
       if (themeText) themeText.textContent = 'Dark';
       if (themeIcon) themeIcon.setAttribute('data-lucide', 'moon');
+    } else {
+      document.body.classList.add('light-theme');
+      if (themeText) themeText.textContent = 'Light';
+      if (themeIcon) themeIcon.setAttribute('data-lucide', 'sun');
     }
     refreshIcons();
   }
