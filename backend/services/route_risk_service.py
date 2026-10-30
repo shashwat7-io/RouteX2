@@ -55,6 +55,29 @@ class RouteRiskAssessmentService:
         corridor_rain = self.prediction.gpm.get_current_rainfall(corridor_mid[1], corridor_mid[0])
         base_r24 = corridor_rain.get("last_24h_mm", 12.0)
 
+        # Pre-batch fetch all segment elevations in 1 fast network request
+        all_terrain_pts = []
+        delta = 0.002
+        for s_idx in range(segment_count):
+            start_i = s_idx * pts_per_seg
+            end_i = min(total_pts, (s_idx + 1) * pts_per_seg) if s_idx < segment_count - 1 else total_pts
+            if start_i >= total_pts:
+                break
+            seg_coords = route_coords[start_i:end_i]
+            if len(seg_coords) >= 2:
+                m_pt = seg_coords[len(seg_coords) // 2]
+                m_lon, m_lat = m_pt[0], m_pt[1]
+                all_terrain_pts.extend([
+                    (m_lat, m_lon),
+                    (m_lat + delta, m_lon),
+                    (m_lat - delta, m_lon),
+                    (m_lat, m_lon + delta),
+                    (m_lat, m_lon - delta)
+                ])
+
+        if hasattr(self.prediction.terrain, "fetch_elevation_batch") and all_terrain_pts:
+            self.prediction.terrain.fetch_elevation_batch(all_terrain_pts)
+
         for s_idx in range(segment_count):
             start_i = s_idx * pts_per_seg
             end_i = min(total_pts, (s_idx + 1) * pts_per_seg) if s_idx < segment_count - 1 else total_pts

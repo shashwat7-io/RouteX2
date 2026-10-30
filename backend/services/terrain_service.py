@@ -82,6 +82,45 @@ class TerrainService:
             "source": "SRTM / Copernicus High-Resolution DEM"
         }
 
+    def fetch_elevation_batch(self, points: List[Tuple[float, float]]) -> Dict[Tuple[float, float], float]:
+        """Fetches elevations in a single batch request to prevent sequential HTTP delays."""
+        needed = []
+        res = {}
+        for lat, lon in points:
+            key = f"{round(lat, 4)}_{round(lon, 4)}"
+            if key in self._elevation_cache:
+                res[(lat, lon)] = self._elevation_cache[key]
+            else:
+                needed.append((lat, lon))
+
+        if needed:
+            # Batch query in chunks of up to 60 points
+            chunk_size = 50
+            for i in range(0, len(needed), chunk_size):
+                chunk = needed[i:i + chunk_size]
+                lat_str = ",".join([str(round(p[0], 5)) for p in chunk])
+                lon_str = ",".join([str(round(p[1], 5)) for p in chunk])
+                try:
+                    url = f"https://api.open-meteo.com/v1/elevation?latitude={lat_str}&longitude={lon_str}"
+                    resp = requests.get(url, timeout=2.5)
+                    if resp.status_code == 200:
+                        elevations = resp.json().get("elevation", [])
+                        if isinstance(elevations, list) and len(elevations) == len(chunk):
+                            for idx, (p_lat, p_lon) in enumerate(chunk):
+                                val = float(elevations[idx])
+                                c_key = f"{round(p_lat, 4)}_{round(p_lon, 4)}"
+                                self._elevation_cache[c_key] = val
+                                res[(p_lat, p_lon)] = val
+                except Exception:
+                    pass
+
+        # Fill any remaining with regional heuristic
+        for lat, lon in points:
+            if (lat, lon) not in res:
+                res[(lat, lon)] = self.fetch_elevation(lat, lon)
+
+        return res
+
     def fetch_elevation(self, lat: float, lon: float) -> float:
         """Fetches elevation in meters with caching."""
         cache_key = f"{round(lat, 4)}_{round(lon, 4)}"
@@ -90,7 +129,7 @@ class TerrainService:
 
         try:
             url = "https://api.open-meteo.com/v1/elevation"
-            resp = requests.get(url, params={"latitude": lat, "longitude": lon}, timeout=4)
+            resp = requests.get(url, params={"latitude": lat, "longitude": lon}, timeout=1.8)
             if resp.status_code == 200:
                 elev_val = resp.json().get("elevation", [500.0])
                 elev = float(elev_val[0]) if isinstance(elev_val, list) and len(elev_val) > 0 else float(elev_val)

@@ -606,6 +606,93 @@ def compute_route(req: RouteRequest):
         active_route.get("duration_min", 0.0)
     )
 
+    # 4. Construct unified route options (Recommended, Fastest, Alternatives)
+    route_options = []
+
+    if is_rerouted and recalculated_route:
+        # Option 1: Recommended Safe Detour
+        safe_risk = risk_assessment
+        route_options.append({
+            "id": "route_recommended",
+            "title": "Recommended Safe Detour",
+            "tag": "SAFEST DETOUR",
+            "is_recommended": True,
+            "distance_km": recalculated_route.get("distance_km", 0.0),
+            "duration_min": recalculated_route.get("duration_min", 0.0),
+            "coordinates": recalculated_route.get("coordinates", []),
+            "steps": recalculated_route.get("steps", []),
+            "hazard_score": safe_risk.get("route_hazard_index", 0.2),
+            "risk_level": safe_risk.get("route_safety_status", "LOWER_ESTIMATED_HAZARD"),
+            "recommendation_reason": detour_reason or "Safely detours around active high-risk landslide geofence zones (LHI >= 0.75).",
+            "risk_assessment": safe_risk,
+            "color": "#10b981"
+        })
+
+        # Option 2: Fastest Direct (Blocked by Hazard)
+        primary_risk = route_risk_service.analyze_route_risk(
+            primary_coords,
+            primary_route.get("distance_km", 0.0),
+            primary_route.get("duration_min", 0.0)
+        )
+        route_options.append({
+            "id": "route_fastest",
+            "title": "Fastest Direct Corridor (Hazard Blocked)",
+            "tag": "BLOCKED",
+            "is_recommended": False,
+            "distance_km": primary_route.get("distance_km", 0.0),
+            "duration_min": primary_route.get("duration_min", 0.0),
+            "coordinates": primary_route.get("coordinates", []),
+            "steps": primary_route.get("steps", []),
+            "hazard_score": primary_risk.get("route_hazard_index", 0.85),
+            "risk_level": "CRITICAL_HAZARD_BLOCKED",
+            "recommendation_reason": f"Direct road intersects {intersection_res.get('intersecting_count', 1)} active landslide danger geofences. Extreme hazard.",
+            "risk_assessment": primary_risk,
+            "color": "#ef4444"
+        })
+    else:
+        # Option 1: Primary Highway (Recommended Safe)
+        route_options.append({
+            "id": "route_recommended",
+            "title": "Recommended Landslide-Safe Route",
+            "tag": "RECOMMENDED",
+            "is_recommended": True,
+            "distance_km": primary_route.get("distance_km", 0.0),
+            "duration_min": primary_route.get("duration_min", 0.0),
+            "coordinates": primary_route.get("coordinates", []),
+            "steps": primary_route.get("steps", []),
+            "hazard_score": risk_assessment.get("route_hazard_index", 0.22),
+            "risk_level": risk_assessment.get("route_safety_status", "LOWER_ESTIMATED_HAZARD"),
+            "recommendation_reason": "Lowest composite landslide hazard index. No active critical landslide geofences intersect planned path.",
+            "risk_assessment": risk_assessment,
+            "color": "#10b981"
+        })
+
+    # Add any alternatives from primary_route["alternatives"]
+    for idx, alt in enumerate(primary_route.get("alternatives", [])[:2]):
+        alt_coords = alt.get("coordinates", [])
+        if len(alt_coords) > 0:
+            alt_risk = route_risk_service.analyze_route_risk(
+                alt_coords,
+                alt.get("distance_km", 0.0),
+                alt.get("duration_min", 0.0)
+            )
+            alt_id = f"route_alt_{idx+1}"
+            route_options.append({
+                "id": alt_id,
+                "title": f"Alternative Pass {idx+1} ({alt.get('summary', 'Secondary Highway')})",
+                "tag": "ALTERNATIVE",
+                "is_recommended": False,
+                "distance_km": alt.get("distance_km", 0.0),
+                "duration_min": alt.get("duration_min", 0.0),
+                "coordinates": alt_coords,
+                "steps": alt.get("steps", []),
+                "hazard_score": alt_risk.get("route_hazard_index", 0.35),
+                "risk_level": alt_risk.get("route_safety_status", "MODERATE_MONITORED"),
+                "recommendation_reason": f"Secondary corridor via {alt.get('summary', 'mountain bypass')}. Hazard index: {alt_risk.get('route_hazard_index', 0.35):.2f}.",
+                "risk_assessment": alt_risk,
+                "color": "#3b82f6" if idx == 0 else "#f59e0b"
+            })
+
     return {
         "is_rerouted": is_rerouted,
         "hazard_detected": intersection_res["intersects"],
@@ -617,12 +704,36 @@ def compute_route(req: RouteRequest):
         "hazard_last_updated": now_iso,
         "geofences": geofences,
         "primary_route": primary_route,
+        "route": recalculated_route if is_rerouted else primary_route,
         "recalculated_safe_route": recalculated_route if is_rerouted else primary_route,
         "distance_impact_km": round((recalculated_route["distance_km"] - primary_route["distance_km"]), 2) if recalculated_route else 0.0,
         "eta_impact_min": round((recalculated_route["duration_min"] - primary_route["duration_min"]), 1) if recalculated_route else 0.0,
         "prevention_assets": prevention_engine.find_assets_near_route(primary_coords, buffer_radius_km=18.0),
-        "route_risk_assessment": risk_assessment
+        "route_risk_assessment": risk_assessment,
+        "route_options": route_options,
+        "selected_route_id": route_options[0]["id"] if route_options else "route_recommended"
     }
+
+
+class RecalculateRouteRequest(BaseModel):
+    current_position: List[float] = Field(..., description="[longitude, latitude]")
+    destination: List[float] = Field(..., description="[longitude, latitude]")
+    hazard_points: Optional[List[HazardPointInput]] = None
+    include_steps: bool = Field(default=True)
+
+@app.post("/api/route/recalculate")
+def recalculate_route(req: RecalculateRouteRequest):
+    """
+    On-the-fly route recalculation triggered when user deviates off planned path.
+    Re-scores all risk and returns fresh turn-by-turn guidance.
+    """
+    route_req = RouteRequest(
+        start=req.current_position,
+        end=req.destination,
+        hazard_points=req.hazard_points,
+        include_steps=req.include_steps
+    )
+    return compute_route(route_req)
 
 
 @app.post("/api/navigation/check")

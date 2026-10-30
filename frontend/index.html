@@ -201,6 +201,27 @@
             <span id="route-provider-pill" class="provider-pill">OSRM Safe Engine</span>
           </div>
 
+          <!-- Route Endpoints Banner -->
+          <div class="route-endpoints-banner">
+            <div class="endpoint-item origin-endpoint">
+              <span class="endpoint-dot green"></span>
+              <div class="endpoint-text">
+                <span class="endpoint-label">Origin</span>
+                <span id="route-origin-display" class="endpoint-val">Current Location</span>
+              </div>
+            </div>
+            <div class="endpoint-connector">
+              <i data-lucide="arrow-down"></i>
+            </div>
+            <div class="endpoint-item dest-endpoint">
+              <span class="endpoint-dot blue"></span>
+              <div class="endpoint-text">
+                <span class="endpoint-label">Destination</span>
+                <span id="route-dest-display" class="endpoint-val">Selected Destination</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Route Key Metrics -->
           <div class="route-metrics-grid">
             <div class="metric-stat">
@@ -229,26 +250,50 @@
             </div>
           </div>
 
-          <!-- Route Alternatives Selector -->
-          <div id="nav-alternatives-container" class="alternatives-box hidden">
-            <span class="alt-label">Available Route Options:</span>
-            <div id="nav-alternatives-list" class="alt-btn-group"></div>
+          <!-- Route Options Selector (Recommended, Fastest, Alternatives) -->
+          <div id="nav-route-options-container" class="route-options-container">
+            <div class="route-options-header">
+              <span class="section-label">Select Route Option:</span>
+              <span class="options-count" id="route-options-count">2 Options</span>
+            </div>
+            <div id="nav-route-options-list" class="route-options-list">
+              <!-- Dynamically populated route option cards -->
+            </div>
           </div>
 
-          <!-- Action Buttons -->
+          <!-- Primary Route Action Buttons -->
           <div class="nav-action-buttons">
             <button id="btn-start-nav" class="btn-primary start-nav-btn pulse-glow">
               <i data-lucide="navigation"></i>
-              <span>Start Live Navigation</span>
+              <span>START NAVIGATION</span>
             </button>
-            <button id="btn-simulate-drive" class="btn-secondary" title="Test drive along route with simulated movement">
+            <button id="btn-toggle-directions-view" class="btn-secondary" title="View turn-by-turn directions">
+              <i data-lucide="list"></i>
+              <span>View Directions (<span id="btn-directions-count">0</span>)</span>
+            </button>
+            <button id="btn-simulate-drive" class="btn-ghost" title="Simulate driving progress along route">
               <i data-lucide="play-circle"></i>
-              <span>Simulate Driving Progress</span>
+              <span>Simulate Drive</span>
             </button>
             <button id="btn-clear-route" class="btn-outline">
               <i data-lucide="rotate-ccw"></i>
-              <span>Clear Route</span>
+              <span>Clear</span>
             </button>
+          </div>
+
+          <!-- Turn-by-Turn Directions Panel (Available directly after route calculation) -->
+          <div id="route-directions-view" class="route-directions-view hidden">
+            <div class="directions-header">
+              <div class="flex-align-gap">
+                <i data-lucide="map-pin" style="color:var(--accent-emerald);"></i>
+                <h3 class="directions-title">Turn-by-Turn Directions</h3>
+              </div>
+              <span class="directions-badge" id="directions-total-badge">0 steps</span>
+            </div>
+            <p class="directions-hint">Click any step below to highlight position on map</p>
+            <div id="directions-full-list" class="directions-steps-container">
+              <!-- Dynamically populated turn-by-turn steps -->
+            </div>
           </div>
         </section>
 
@@ -366,14 +411,34 @@
               <h2>Active Navigation Guidance</h2>
             </div>
             <div class="nav-speed-badge">
-              <span id="nav-live-speed">0 km/h</span>
+              <span id="nav-live-speed">-- km/h</span>
             </div>
           </div>
 
-          <!-- Off-Route Recalculation Alert -->
+          <!-- Live Trip Progress Bar -->
+          <div class="nav-trip-progress-box">
+            <div class="progress-info-row">
+              <span id="nav-active-remaining-dist">-- km remaining</span>
+              <span id="nav-active-remaining-time">-- min ETA</span>
+            </div>
+            <div class="progress-track-bar">
+              <div id="nav-progress-bar-fill" class="progress-track-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Off-Route Recalculation Alert Banner -->
           <div id="nav-offroute-alert" class="nav-offroute-box hidden">
-            <div class="spinner-sm"></div>
-            <span>Off planned route! Recalculating landslide-safe detour...</span>
+            <div class="offroute-content">
+              <i data-lucide="alert-octagon"></i>
+              <div>
+                <div class="offroute-title">Off Planned Route</div>
+                <div id="nav-offroute-dist-text" class="offroute-sub">Deviated from landslide-safe corridor</div>
+              </div>
+            </div>
+            <button id="btn-offroute-recalc-now" class="btn-recalc-quick" title="Recalculate route now">
+              <i data-lucide="refresh-cw"></i>
+              <span>Recalculate</span>
+            </button>
           </div>
 
           <!-- Hazard Proximity Alert Pill -->
@@ -394,29 +459,64 @@
             </div>
           </div>
 
-          <!-- Navigation Control Toolbar -->
+          <!-- Navigation Control Toolbar (All 7 Google Maps Controls) -->
           <div class="nav-controls-toolbar">
-            <button id="btn-toggle-follow" class="btn-toolbar-toggle active" title="Toggle Auto-Follow Center">
-              <i data-lucide="crosshair"></i>
-              <span>Follow Me</span>
+            <button id="btn-nav-pause" class="btn-toolbar-toggle" title="Pause / Resume Live Navigation">
+              <i data-lucide="pause" id="icon-pause-nav"></i>
+              <span id="text-pause-nav">Pause</span>
             </button>
-            <button id="btn-toggle-voice" class="btn-toolbar-toggle active" title="Toggle Voice Alerts">
+            <button id="btn-nav-recenter" class="btn-toolbar-toggle active" title="Recenter Camera on Vehicle">
+              <i data-lucide="crosshair"></i>
+              <span>Recenter</span>
+            </button>
+            <button id="btn-nav-recalc" class="btn-toolbar-toggle" title="Recalculate Route from Current GPS">
+              <i data-lucide="refresh-cw"></i>
+              <span>Reroute</span>
+            </button>
+            <button id="btn-toggle-voice" class="btn-toolbar-toggle active" title="Toggle Spoken Voice Guidance">
               <i data-lucide="volume-2" id="voice-icon"></i>
               <span>Audio</span>
             </button>
-            <button id="btn-end-nav" class="btn-danger-action">
+            <button id="btn-end-nav" class="btn-danger-action" title="End Live Navigation">
               <i data-lucide="square"></i>
-              <span>End Navigation</span>
+              <span>End Nav</span>
             </button>
           </div>
 
-          <!-- Collapsible Turn-by-Turn Steps List -->
+          <!-- Collapsible Turn-by-Turn Steps List in Active Navigation -->
           <div class="upcoming-steps-accordion">
             <button id="btn-toggle-steps-list" class="steps-accordion-btn">
-              <span>Upcoming Turn-by-Turn Steps (<span id="steps-count-badge">0</span>)</span>
+              <span>Turn-by-Turn Instructions (<span id="steps-count-badge">0</span> maneuvers)</span>
               <i data-lucide="chevron-down" id="steps-chevron"></i>
             </button>
             <div id="nav-full-steps-list" class="steps-list-scroll hidden"></div>
+          </div>
+
+          <!-- Destination Arrival Modal / Card -->
+          <div id="destination-arrival-card" class="destination-arrival-card hidden">
+            <div class="arrival-celebration-icon">
+              <i data-lucide="award"></i>
+            </div>
+            <h3 class="arrival-heading">You Have Arrived!</h3>
+            <p id="arrival-dest-name" class="arrival-desc">Destination reached safely along landslide-monitored corridor.</p>
+            <div class="arrival-metrics-row">
+              <div class="arr-metric">
+                <span class="arr-lbl">Total Trip</span>
+                <span id="arrival-metric-dist" class="arr-val">-- km</span>
+              </div>
+              <div class="arr-metric">
+                <span class="arr-lbl">Travel Time</span>
+                <span id="arrival-metric-dur" class="arr-val">-- min</span>
+              </div>
+              <div class="arr-metric">
+                <span class="arr-lbl">Route Safety</span>
+                <span class="arr-val text-emerald">Verified Safe</span>
+              </div>
+            </div>
+            <button id="btn-arrival-dismiss" class="btn-primary" style="margin-top:10px; width:100%;">
+              <i data-lucide="check"></i>
+              <span>Done (Exit Navigation)</span>
+            </button>
           </div>
         </section>
 

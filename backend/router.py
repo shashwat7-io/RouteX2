@@ -87,6 +87,33 @@ class RouterEngine:
                             "steps": self._extract_osrm_steps(alt_route)
                         })
 
+                    # If OSRM did not return an alternative in routes[1:], attempt an offset corridor query
+                    if len(alternatives) == 0 and len(waypoints) == 2:
+                        try:
+                            p_start, p_end = waypoints[0], waypoints[1]
+                            p_dx = p_end[0] - p_start[0]
+                            p_dy = p_end[1] - p_start[1]
+                            p_norm = math.sqrt(p_dx*p_dx + p_dy*p_dy) + 1e-6
+                            alt_wpt = [
+                                round((p_start[0] + p_end[0]) / 2.0 - (p_dy / p_norm) * 0.10, 5),
+                                round((p_start[1] + p_end[1]) / 2.0 + (p_dx / p_norm) * 0.10, 5)
+                            ]
+                            alt_url = f"http://router.project-osrm.org/route/v1/driving/{p_start[0]},{p_start[1]};{alt_wpt[0]},{alt_wpt[1]};{p_end[0]},{p_end[1]}?overview=full&geometries=geojson{steps_param}"
+                            alt_resp = requests.get(alt_url, timeout=3.0, headers={"User-Agent": "RouteX/2.0"})
+                            if alt_resp.status_code == 200:
+                                alt_data = alt_resp.json()
+                                if alt_data.get("routes") and len(alt_data["routes"]) > 0:
+                                    ar = alt_data["routes"][0]
+                                    alternatives.append({
+                                        "coordinates": ar["geometry"]["coordinates"],
+                                        "distance_km": round(ar["distance"] / 1000.0, 2),
+                                        "duration_min": round(ar["duration"] / 60.0, 1),
+                                        "summary": "Alternative Corridor Pass",
+                                        "steps": self._extract_osrm_steps(ar)
+                                    })
+                        except Exception:
+                            pass
+
                     return {
                         "coordinates": coords,
                         "distance_km": dist_km,

@@ -101,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeNavSteps = [];
   let navWatchId = null;
   let isNavigating = false;
+  let isNavPaused = false;
   let isSimulateDriving = false;
   let simDriveTimer = null;
   let simDriveIndex = 0;
@@ -110,6 +111,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastAnnouncedStepIndex = -1;
   let offRouteCounter = 0;
   let isRecalculating = false;
+  let activeRouteOptions = [];
+  let selectedRouteOptionId = "route_recommended";
+  let stepHighlightMarker = null;
+  let alternativeRouteLayers = [];
+  let totalTripDistanceKm = 0.0;
+  let totalTripDurationMin = 0.0;
 
   // Analysis / Corridor State (Preserved 100%)
   let activeRegionKey = 'badrinath';
@@ -203,6 +210,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCalcRoute = document.getElementById('btn-calc-route');
 
   const routeInfoCard = document.getElementById('route-info-card');
+  const routeOriginDisplay = document.getElementById('route-origin-display');
+  const routeDestDisplay = document.getElementById('route-dest-display');
   const navRouteDist = document.getElementById('nav-route-dist');
   const navRouteDur = document.getElementById('nav-route-dur');
   const navRouteEta = document.getElementById('nav-route-eta');
@@ -211,21 +220,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const navSafetyTitle = document.getElementById('nav-safety-title');
   const navDetourRationale = document.getElementById('nav-detour-rationale');
   const navHazardTime = document.getElementById('nav-hazard-time');
-  const navAlternativesContainer = document.getElementById('nav-alternatives-container');
-  const navAlternativesList = document.getElementById('nav-alternatives-list');
+  const navRouteOptionsContainer = document.getElementById('nav-route-options-container');
+  const navRouteOptionsList = document.getElementById('nav-route-options-list');
+  const routeOptionsCount = document.getElementById('route-options-count');
+  const btnToggleDirectionsView = document.getElementById('btn-toggle-directions-view');
+  const btnDirectionsCount = document.getElementById('btn-directions-count');
+  const routeDirectionsView = document.getElementById('route-directions-view');
+  const directionsFullList = document.getElementById('directions-full-list');
+  const directionsTotalBadge = document.getElementById('directions-total-badge');
   const btnStartNav = document.getElementById('btn-start-nav');
   const btnSimulateDrive = document.getElementById('btn-simulate-drive');
   const btnClearRoute = document.getElementById('btn-clear-route');
 
   const activeNavPanel = document.getElementById('active-nav-panel');
   const navLiveSpeed = document.getElementById('nav-live-speed');
+  const navActiveRemainingDist = document.getElementById('nav-active-remaining-dist');
+  const navActiveRemainingTime = document.getElementById('nav-active-remaining-time');
+  const navProgressBarFill = document.getElementById('nav-progress-bar-fill');
   const navOffrouteAlert = document.getElementById('nav-offroute-alert');
+  const navOffrouteDistText = document.getElementById('nav-offroute-dist-text');
+  const btnOffrouteRecalcNow = document.getElementById('btn-offroute-recalc-now');
   const navProximityAlert = document.getElementById('nav-proximity-alert');
   const navProximityText = document.getElementById('nav-proximity-text');
   const navActiveIcon = document.getElementById('nav-active-icon');
   const navActiveDist = document.getElementById('nav-active-dist');
   const navActiveText = document.getElementById('nav-active-text');
   const navActiveStreet = document.getElementById('nav-active-street');
+  const btnNavPause = document.getElementById('btn-nav-pause');
+  const iconPauseNav = document.getElementById('icon-pause-nav');
+  const textPauseNav = document.getElementById('text-pause-nav');
+  const btnNavRecenter = document.getElementById('btn-nav-recenter');
+  const btnNavRecalc = document.getElementById('btn-nav-recalc');
   const btnToggleFollow = document.getElementById('btn-toggle-follow');
   const btnToggleVoice = document.getElementById('btn-toggle-voice');
   const voiceIcon = document.getElementById('voice-icon');
@@ -234,6 +259,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const stepsChevron = document.getElementById('steps-chevron');
   const stepsCountBadge = document.getElementById('steps-count-badge');
   const navFullStepsList = document.getElementById('nav-full-steps-list');
+
+  const destinationArrivalCard = document.getElementById('destination-arrival-card');
+  const arrivalDestName = document.getElementById('arrival-dest-name');
+  const arrivalMetricDist = document.getElementById('arrival-metric-dist');
+  const arrivalMetricDur = document.getElementById('arrival-metric-dur');
+  const btnArrivalDismiss = document.getElementById('btn-arrival-dismiss');
 
   // Floating HUD over Map
   const navFloatingHud = document.getElementById('nav-floating-hud');
@@ -815,10 +846,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function displayCalculatedRoute(routeData, start, end) {
     activeNavigationRoute = routeData;
-    const chosenRoute = routeData.is_rerouted ? routeData.recalculated_safe_route : routeData.primary_route;
 
-    activeRouteCoordinates = chosenRoute.coordinates || [];
-    activeNavSteps = chosenRoute.steps || [];
+    // Extract or synthesize route options
+    if (routeData.route_options && routeData.route_options.length > 0) {
+      activeRouteOptions = routeData.route_options;
+    } else {
+      const chosen = routeData.is_rerouted ? routeData.recalculated_safe_route : routeData.primary_route;
+      activeRouteOptions = [
+        {
+          id: "route_recommended",
+          title: routeData.is_rerouted ? "Autonomous Landslide Safe Detour" : "Recommended Safe Route",
+          label_badge: "RECOMMENDED",
+          distance_km: chosen.distance_km,
+          duration_min: chosen.duration_min,
+          steps: chosen.steps || [],
+          coordinates: chosen.coordinates || [],
+          hazard_score: chosen.hazard_score || 0.15,
+          risk_level: chosen.risk_level || (routeData.is_rerouted ? "MODERATE" : "LOW"),
+          recommendation_reason: routeData.detour_reason || "Safest corridor avoiding high-susceptibility slope zones.",
+          is_recommended: true
+        }
+      ];
+      if (routeData.is_rerouted && routeData.primary_route) {
+        activeRouteOptions.push({
+          id: "route_fastest",
+          title: "Direct Highway (Hazard Blocked)",
+          label_badge: "BLOCKED",
+          distance_km: routeData.primary_route.distance_km,
+          duration_min: routeData.primary_route.duration_min,
+          steps: routeData.primary_route.steps || [],
+          coordinates: routeData.primary_route.coordinates || [],
+          hazard_score: 0.88,
+          risk_level: "CRITICAL",
+          recommendation_reason: "Traverses active landslide hazard geofence. Extreme caution advised.",
+          is_fastest: true
+        });
+      }
+    }
+
+    // Set initial selected route option
+    const recOpt = activeRouteOptions.find(r => r.is_recommended) || activeRouteOptions[0];
+    selectedRouteOptionId = recOpt.id;
+
+    activeRouteCoordinates = recOpt.coordinates || [];
+    activeNavSteps = recOpt.steps || [];
+    totalTripDistanceKm = recOpt.distance_km || 0;
+    totalTripDurationMin = recOpt.duration_min || 0;
 
     // Clear previous map layers
     clearMapLayers();
@@ -838,73 +911,56 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     L.marker([end[1], end[0]], { icon: endIcon }).addTo(routeMarkersGroup).bindPopup(`<b>Destination</b><br>${selectedDestination ? selectedDestination.name : 'Target'}`);
 
+    // Update Endpoints Banner in UI
+    if (routeOriginDisplay) {
+      routeOriginDisplay.textContent = userCurrentPosition ? "Current GPS Location" : (currentRegionData ? currentRegionData.name.split(" to ")[0] : "Origin");
+    }
+    if (routeDestDisplay) {
+      routeDestDisplay.textContent = selectedDestination ? (selectedDestination.name || selectedDestination.formatted) : "Target Destination";
+    }
+
     // 2. Draw Danger Geofence Polygons & Heatmap
     currentGeoJSONGeofences = routeData.geofences;
-    if (chkGeofences.checked && currentGeoJSONGeofences) {
+    if (chkGeofences && chkGeofences.checked && currentGeoJSONGeofences) {
       drawGeofencePolygons(currentGeoJSONGeofences);
     }
-    if (chkHeatmap.checked && currentGeoJSONGeofences) {
+    if (chkHeatmap && chkHeatmap.checked && currentGeoJSONGeofences) {
       drawHeatmapOverlay(currentGeoJSONGeofences);
     }
 
-    // 3. Render Route Polylines
-    if (routeData.is_rerouted && routeData.primary_route && routeData.recalculated_safe_route) {
-      // Primary blocked path (Red Dashed)
-      const origCoords = routeData.primary_route.coordinates.map(c => [c[1], c[0]]);
-      primaryRouteLayer = L.polyline(origCoords, {
-        color: '#ef4444',
-        weight: 4,
-        dashArray: '8, 8',
-        opacity: 0.85
-      }).addTo(map);
+    // 3. Render Route Polylines for Active and Alternative Routes
+    redrawMapPolylines();
 
-      // Recalculated safe detour path (Emerald Green Solid)
-      const safeCoords = routeData.recalculated_safe_route.coordinates.map(c => [c[1], c[0]]);
-      safeRouteLayer = L.polyline(safeCoords, {
-        color: '#10b981',
-        weight: 6,
-        opacity: 0.95
-      }).addTo(map);
-
-      if (safeRouteLayer.getBounds().isValid()) {
-        map.fitBounds(safeRouteLayer.getBounds(), { padding: [40, 40] });
-      }
-
-      // Show top alert banner
+    // Show alert banner if hazard detour engaged
+    if (routeData.is_rerouted) {
       showAlertBanner({
         title: "⚠️ CRITICAL LANDSLIDE HAZARD AVOIDED",
         message: routeData.detour_reason || `High LHI hazard detected along primary road. Autonomous detour active.`,
-        origDist: `${routeData.primary_route.distance_km} km`,
-        safeDist: `${routeData.recalculated_safe_route.distance_km} km`,
+        origDist: routeData.primary_route ? `${routeData.primary_route.distance_km} km` : "—",
+        safeDist: `${recOpt.distance_km} km`,
         etaDelta: `+${Math.abs(routeData.eta_impact_min || 12)} min`
       });
     } else {
-      // Direct Safe Route (Emerald Solid)
-      const safeCoords = chosenRoute.coordinates.map(c => [c[1], c[0]]);
-      safeRouteLayer = L.polyline(safeCoords, {
-        color: '#10b981',
-        weight: 6,
-        opacity: 0.95
-      }).addTo(map);
-
-      if (safeRouteLayer.getBounds().isValid()) {
-        map.fitBounds(safeRouteLayer.getBounds(), { padding: [40, 40] });
-      }
-
       hideAlertBanner();
     }
 
     // 4. Update Route Information Panel Card
-    updateRouteInfoCard(routeData, chosenRoute);
+    updateRouteInfoCard(routeData, recOpt);
 
-    // 5. Render Landslide Prevention & Slope Stabilization Assets along route
+    // 5. Render Route Options list
+    renderRouteOptions(activeRouteOptions);
+
+    // 6. Render Turn-by-Turn Directions List
+    renderDirectionsList(activeNavSteps);
+
+    // 7. Render Landslide Prevention & Slope Stabilization Assets along route
     if (routeData.prevention_assets && routeData.prevention_assets.length > 0) {
       renderPreventionAssets(routeData.prevention_assets);
     } else {
       fetchAndRenderPreventionAssets(activeRegionKey, activeRouteCoordinates);
     }
 
-    // 6. Render Segmented Route Hazard Assessment (GSI + NASA GPM + DEM XGBoost)
+    // 8. Render Segmented Route Hazard Assessment (GSI + NASA GPM + DEM XGBoost)
     if (routeData.route_risk_assessment) {
       renderSegmentedRouteRisk(routeData.route_risk_assessment);
     } else if (activeRouteCoordinates && activeRouteCoordinates.length > 0) {
@@ -912,8 +968,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Smooth scroll to route card
-    routeInfoCard.classList.remove('hidden');
-    routeInfoCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (routeInfoCard) {
+      routeInfoCard.classList.remove('hidden');
+      routeInfoCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
     refreshIcons();
   }
 
@@ -921,83 +979,328 @@ document.addEventListener('DOMContentLoaded', () => {
     const dist = chosenRoute.distance_km || 0;
     const durMin = chosenRoute.duration_min || 0;
 
-    navRouteDist.textContent = `${dist} km`;
+    if (navRouteDist) navRouteDist.textContent = `${dist} km`;
 
     const hours = Math.floor(durMin / 60);
     const mins = Math.round(durMin % 60);
-    navRouteDur.textContent = hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
+    if (navRouteDur) navRouteDur.textContent = hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
 
     // Compute ETA clock
     const now = new Date();
     const etaDate = new Date(now.getTime() + durMin * 60000);
-    navRouteEta.textContent = etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (navRouteEta) navRouteEta.textContent = etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     // Landslide Safety Classification Badge
-    const status = routeData.safety_status || "VERIFIED_SAFE";
-    navHazardSafetyBadge.className = "hazard-safety-banner";
+    const status = chosenRoute.risk_level || routeData.safety_status || "VERIFIED_SAFE";
+    if (navHazardSafetyBadge) {
+      navHazardSafetyBadge.className = "hazard-safety-banner";
 
-    if (status === "CRITICAL_HAZARD_BLOCKED" || routeData.is_rerouted) {
-      navHazardSafetyBadge.classList.add("blocked");
-      navSafetyTitle.textContent = "Autonomous Detour Engaged (Hazard Avoided)";
-      navSafetyIcon.setAttribute('data-lucide', 'shield-alert');
-      navDetourRationale.textContent = routeData.detour_reason || "Route safely avoids active Landslide Hazard Geofences (LHI >= 0.75).";
-    } else if (status === "ELEVATED_RISK") {
-      navHazardSafetyBadge.classList.add("elevated");
-      navSafetyTitle.textContent = "Elevated Slope Risk Detected";
-      navSafetyIcon.setAttribute('data-lucide', 'alert-triangle');
-      navDetourRationale.textContent = routeData.detour_reason || "Corridor passes near elevated soil moisture/slope zones. Monitored in real-time.";
-    } else {
-      navHazardSafetyBadge.classList.add("safe");
-      navSafetyTitle.textContent = "Verified Safe Navigation Corridor";
-      navSafetyIcon.setAttribute('data-lucide', 'shield-check');
-      navDetourRationale.textContent = "0 active landslide geofences intersect planned path. XGBoost ML slope stability index verified.";
+      if (status === "CRITICAL" || status === "CRITICAL_HAZARD_BLOCKED" || routeData.is_rerouted) {
+        navHazardSafetyBadge.classList.add("blocked");
+        if (navSafetyTitle) navSafetyTitle.textContent = "Autonomous Detour Engaged (Hazard Avoided)";
+        if (navSafetyIcon) navSafetyIcon.setAttribute('data-lucide', 'shield-alert');
+        if (navDetourRationale) navDetourRationale.textContent = routeData.detour_reason || chosenRoute.recommendation_reason || "Route safely avoids active Landslide Hazard Geofences (LHI >= 0.75).";
+      } else if (status === "MODERATE" || status === "ELEVATED_RISK") {
+        navHazardSafetyBadge.classList.add("elevated");
+        if (navSafetyTitle) navSafetyTitle.textContent = "Elevated Slope Risk Monitored";
+        if (navSafetyIcon) navSafetyIcon.setAttribute('data-lucide', 'alert-triangle');
+        if (navDetourRationale) navDetourRationale.textContent = chosenRoute.recommendation_reason || "Corridor passes near elevated soil moisture/slope zones. Monitored in real-time.";
+      } else {
+        navHazardSafetyBadge.classList.add("safe");
+        if (navSafetyTitle) navSafetyTitle.textContent = "Verified Safe Navigation Corridor";
+        if (navSafetyIcon) navSafetyIcon.setAttribute('data-lucide', 'shield-check');
+        if (navDetourRationale) navDetourRationale.textContent = chosenRoute.recommendation_reason || "0 active landslide geofences intersect planned path. XGBoost ML slope stability index verified.";
+      }
     }
 
-    navHazardTime.textContent = `Verified: ${new Date(routeData.hazard_last_updated || Date.now()).toLocaleTimeString()} UTC • Open-Meteo & XGBoost`;
+    if (navHazardTime) {
+      navHazardTime.textContent = `Verified: ${new Date(routeData.hazard_last_updated || Date.now()).toLocaleTimeString()} UTC • Open-Meteo & XGBoost`;
+    }
+  }
 
-    // Render Alternatives if available
-    const alternatives = chosenRoute.alternatives || [];
-    if (alternatives.length > 0) {
-      navAlternativesContainer.classList.remove('hidden');
-      navAlternativesList.innerHTML = '';
+  // =========================================================================
+  // ROUTE OPTIONS & DYNAMIC POLYLINE MANAGEMENT
+  // =========================================================================
+  function renderRouteOptions(options) {
+    if (!navRouteOptionsContainer || !navRouteOptionsList) return;
 
-      const mainBtn = document.createElement('button');
-      mainBtn.className = 'alt-route-btn active';
-      mainBtn.innerHTML = `<span><b>Fastest Safe Route:</b> ${dist} km</span> <span>${hours > 0 ? `${hours}h ${mins}m` : `${mins} min`}</span>`;
-      mainBtn.addEventListener('click', () => {
-        document.querySelectorAll('.alt-route-btn').forEach(b => b.classList.remove('active'));
-        mainBtn.classList.add('active');
-        activeRouteCoordinates = chosenRoute.coordinates;
-        activeNavSteps = chosenRoute.steps || [];
-        if (safeRouteLayer) {
-          safeRouteLayer.setLatLngs(chosenRoute.coordinates.map(c => [c[1], c[0]]));
-        }
+    if (!options || options.length === 0) {
+      navRouteOptionsContainer.classList.add('hidden');
+      return;
+    }
+
+    navRouteOptionsContainer.classList.remove('hidden');
+    if (routeOptionsCount) {
+      routeOptionsCount.textContent = `${options.length} Routes`;
+    }
+
+    navRouteOptionsList.innerHTML = '';
+
+    options.forEach(opt => {
+      const isSelected = opt.id === selectedRouteOptionId;
+      const card = document.createElement('div');
+      card.className = `route-option-card ${isSelected ? 'active' : ''}`;
+      card.dataset.routeId = opt.id;
+
+      // Tag class
+      let tagClass = 'badge-alt';
+      if (opt.is_recommended) tagClass = 'badge-safe';
+      else if (opt.is_fastest) tagClass = 'badge-fastest';
+      else if (opt.risk_level === 'CRITICAL' || opt.risk_level === 'HIGH') tagClass = 'badge-blocked';
+
+      // Risk class
+      let riskClass = 'risk-low';
+      if (opt.risk_level === 'CRITICAL' || opt.risk_level === 'HIGH') riskClass = 'risk-high';
+      else if (opt.risk_level === 'MODERATE') riskClass = 'risk-moderate';
+
+      // Duration formatting
+      const durMin = opt.duration_min || 0;
+      const h = Math.floor(durMin / 60);
+      const m = Math.round(durMin % 60);
+      const durStr = h > 0 ? `${h}h ${m}m` : `${m} min`;
+
+      // ETA
+      const etaDate = new Date(Date.now() + durMin * 60000);
+      const etaStr = etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      card.innerHTML = `
+        <div class="route-option-header">
+          <span class="route-tag-badge ${tagClass}">${escapeHtml(opt.label_badge || (opt.is_recommended ? 'RECOMMENDED' : 'ALTERNATIVE'))}</span>
+          <span class="route-risk-badge-mini ${riskClass}">${escapeHtml(opt.risk_level || 'LOW')} RISK</span>
+        </div>
+        <div class="route-option-title">${escapeHtml(opt.title || 'Mountain Route')}</div>
+        <div class="route-option-stats">
+          <span><b>${opt.distance_km || 0} km</b></span>
+          <span>•</span>
+          <span><b>${durStr}</b></span>
+          <span>•</span>
+          <span>ETA ${etaStr}</span>
+        </div>
+        <div class="route-option-rationale">${escapeHtml(opt.recommendation_reason || 'Verified corridor')}</div>
+      `;
+
+      card.addEventListener('click', () => {
+        selectRouteOption(opt.id);
       });
-      navAlternativesList.appendChild(mainBtn);
 
-      alternatives.forEach((alt, i) => {
-        const altBtn = document.createElement('button');
-        altBtn.className = 'alt-route-btn';
-        const altH = Math.floor(alt.duration_min / 60);
-        const altM = Math.round(alt.duration_min % 60);
-        const altDurStr = altH > 0 ? `${altH}h ${altM}m` : `${altM} min`;
-        altBtn.innerHTML = `<span><b>Option ${i+2}:</b> ${alt.distance_km} km</span> <span>${altDurStr}</span>`;
-        altBtn.addEventListener('click', () => {
-          document.querySelectorAll('.alt-route-btn').forEach(b => b.classList.remove('active'));
-          altBtn.classList.add('active');
-          // Switch to alternative
-          activeRouteCoordinates = alt.coordinates;
-          activeNavSteps = alt.steps || [];
-          if (safeRouteLayer) {
-            safeRouteLayer.setLatLngs(alt.coordinates.map(c => [c[1], c[0]]));
-          }
+      navRouteOptionsList.appendChild(card);
+    });
+
+    refreshIcons();
+  }
+
+  function selectRouteOption(routeId) {
+    selectedRouteOptionId = routeId;
+    const chosenOpt = activeRouteOptions.find(r => r.id === routeId) || activeRouteOptions[0];
+    if (!chosenOpt) return;
+
+    // 1. Update UI cards selection
+    document.querySelectorAll('.route-option-card').forEach(c => {
+      c.classList.toggle('active', c.dataset.routeId === routeId);
+    });
+
+    // 2. Set active nav variables
+    activeRouteCoordinates = chosenOpt.coordinates || [];
+    activeNavSteps = chosenOpt.steps || [];
+    totalTripDistanceKm = chosenOpt.distance_km || 0;
+    totalTripDurationMin = chosenOpt.duration_min || 0;
+
+    // 3. Update Route Info Card metrics
+    if (navRouteDist) navRouteDist.textContent = `${chosenOpt.distance_km} km`;
+    const h = Math.floor((chosenOpt.duration_min || 0) / 60);
+    const m = Math.round((chosenOpt.duration_min || 0) % 60);
+    if (navRouteDur) navRouteDur.textContent = h > 0 ? `${h}h ${m}m` : `${m} min`;
+    const etaDate = new Date(Date.now() + (chosenOpt.duration_min || 0) * 60000);
+    if (navRouteEta) navRouteEta.textContent = etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Update safety banner
+    if (navSafetyTitle) navSafetyTitle.textContent = chosenOpt.title;
+    if (navDetourRationale) navDetourRationale.textContent = chosenOpt.recommendation_reason;
+    if (navHazardSafetyBadge) {
+      navHazardSafetyBadge.className = 'hazard-safety-banner';
+      if (chosenOpt.risk_level === 'CRITICAL' || chosenOpt.risk_level === 'HIGH') {
+        navHazardSafetyBadge.classList.add('blocked');
+        if (navSafetyIcon) navSafetyIcon.setAttribute('data-lucide', 'shield-alert');
+      } else if (chosenOpt.risk_level === 'MODERATE') {
+        navHazardSafetyBadge.classList.add('elevated');
+        if (navSafetyIcon) navSafetyIcon.setAttribute('data-lucide', 'alert-triangle');
+      } else {
+        navHazardSafetyBadge.classList.add('safe');
+        if (navSafetyIcon) navSafetyIcon.setAttribute('data-lucide', 'shield-check');
+      }
+    }
+
+    // 4. Update Polylines on Map
+    redrawMapPolylines();
+
+    // 5. Update Turn-by-Turn directions
+    renderDirectionsList(activeNavSteps);
+    refreshIcons();
+  }
+
+  function redrawMapPolylines() {
+    if (safeRouteLayer && map && map.hasLayer(safeRouteLayer)) map.removeLayer(safeRouteLayer);
+    if (primaryRouteLayer && map && map.hasLayer(primaryRouteLayer)) map.removeLayer(primaryRouteLayer);
+    if (alternativeRouteLayers && alternativeRouteLayers.length > 0) {
+      alternativeRouteLayers.forEach(l => { if (map && map.hasLayer(l)) map.removeLayer(l); });
+      alternativeRouteLayers = [];
+    }
+
+    // Draw alternative routes first (behind active route)
+    activeRouteOptions.forEach(opt => {
+      if (opt.id !== selectedRouteOptionId && opt.coordinates && opt.coordinates.length > 0) {
+        const coords = opt.coordinates.map(c => [c[1], c[0]]);
+        const isRisky = opt.risk_level === 'CRITICAL' || opt.risk_level === 'HIGH';
+        const altLine = L.polyline(coords, {
+          color: isRisky ? '#ef4444' : '#3b82f6',
+          weight: 4,
+          dashArray: '6, 8',
+          opacity: 0.75
+        }).addTo(map);
+
+        altLine.bindTooltip(`<b>${escapeHtml(opt.title)}</b><br>${opt.distance_km} km • ${opt.duration_min} min • ${opt.risk_level} Risk`, {
+          sticky: true
         });
-        navAlternativesList.appendChild(altBtn);
+
+        altLine.on('click', () => {
+          selectRouteOption(opt.id);
+        });
+
+        alternativeRouteLayers.push(altLine);
+      }
+    });
+
+    // Draw currently selected active route
+    const activeOpt = activeRouteOptions.find(r => r.id === selectedRouteOptionId) || activeRouteOptions[0];
+    if (activeOpt && activeOpt.coordinates && activeOpt.coordinates.length > 0) {
+      const coords = activeOpt.coordinates.map(c => [c[1], c[0]]);
+      const isRisky = activeOpt.risk_level === 'CRITICAL' || activeOpt.risk_level === 'HIGH';
+      safeRouteLayer = L.polyline(coords, {
+        color: isRisky ? '#f59e0b' : '#10b981',
+        weight: 6,
+        opacity: 0.95
+      }).addTo(map);
+
+      if (safeRouteLayer.getBounds().isValid()) {
+        map.fitBounds(safeRouteLayer.getBounds(), { padding: [45, 45] });
+      }
+    }
+  }
+
+  // =========================================================================
+  // TURN-BY-TURN DIRECTIONS PANEL & STEP HIGHLIGHTING
+  // =========================================================================
+  function renderDirectionsList(steps) {
+    if (!directionsFullList) return;
+    directionsFullList.innerHTML = '';
+
+    const stepList = steps || [];
+    if (btnDirectionsCount) btnDirectionsCount.textContent = stepList.length;
+    if (directionsTotalBadge) directionsTotalBadge.textContent = `${stepList.length} Steps`;
+
+    if (stepList.length === 0) {
+      directionsFullList.innerHTML = `
+        <div style="padding:16px; text-align:center; color:var(--text-dim); font-size:0.8rem;">
+          No step-by-step maneuvers available for this corridor.
+        </div>
+      `;
+      return;
+    }
+
+    stepList.forEach((step, idx) => {
+      const card = document.createElement('div');
+      card.className = 'direction-step-card';
+      card.dataset.stepIndex = idx;
+
+      const distStr = (step.distance_m || 0) > 1000 
+        ? `${((step.distance_m || 0) / 1000).toFixed(1)} km` 
+        : `${Math.round(step.distance_m || 0)} m`;
+
+      const iconName = step.icon || getManeuverIcon(step.type, step.instruction);
+
+      card.innerHTML = `
+        <div class="direction-step-icon">
+          <i data-lucide="${iconName}"></i>
+        </div>
+        <div class="direction-step-content">
+          <div class="direction-step-instruction">${escapeHtml(step.instruction || 'Continue')}</div>
+          <div class="direction-step-street">${escapeHtml(step.street_name || 'Mountain Highway')}</div>
+        </div>
+        <div class="direction-step-distance">${distStr}</div>
+      `;
+
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.direction-step-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        highlightStepOnMap(step);
       });
 
-    } else {
-      navAlternativesContainer.classList.add('hidden');
+      directionsFullList.appendChild(card);
+    });
+
+    refreshIcons();
+  }
+
+  function getManeuverIcon(type, instruction) {
+    const text = (instruction || '').toLowerCase();
+    if (text.includes('arrive') || text.includes('destination')) return 'map-pin';
+    if (text.includes('left') || text.includes('turn left')) return 'corner-up-left';
+    if (text.includes('right') || text.includes('turn right')) return 'corner-up-right';
+    if (text.includes('u-turn')) return 'rotate-cw';
+    if (text.includes('exit')) return 'log-out';
+    if (text.includes('fork') || text.includes('slight')) return 'git-fork';
+    if (text.includes('depart') || text.includes('start')) return 'navigation';
+    return 'arrow-up';
+  }
+
+  function highlightStepOnMap(step) {
+    if (!step || !step.location || !map) return;
+
+    const loc = [step.location[1], step.location[0]]; // [lat, lon]
+
+    if (stepHighlightMarker && map.hasLayer(stepHighlightMarker)) {
+      map.removeLayer(stepHighlightMarker);
+      stepHighlightMarker = null;
     }
+
+    // Create pulsing highlight marker
+    const icon = L.divIcon({
+      className: 'step-highlight-pulse-marker',
+      html: '<div style="background:#06b6d4; width:18px; height:18px; border-radius:50%; border:3px solid #ffffff; box-shadow: 0 0 16px #06b6d4;"></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+
+    stepHighlightMarker = L.marker(loc, { icon: icon }).addTo(map);
+
+    const distStr = (step.distance_m || 0) > 1000 
+      ? `${((step.distance_m || 0) / 1000).toFixed(1)} km` 
+      : `${Math.round(step.distance_m || 0)} m`;
+
+    stepHighlightMarker.bindPopup(`
+      <div style="font-family:inherit; font-size:12px; color:#f1f5f9; min-width:180px;">
+        <b style="color:#06b6d4;">Step ${step.step_number || ''}</b><br>
+        <b>${escapeHtml(step.instruction || '')}</b><br>
+        <span style="color:#94a3b8; font-size:11px;">${escapeHtml(step.street_name || '')} (${distStr})</span>
+      </div>
+    `).openPopup();
+
+    map.flyTo(loc, 15, { duration: 0.8 });
+  }
+
+  if (btnToggleDirectionsView) {
+    btnToggleDirectionsView.addEventListener('click', () => {
+      if (routeDirectionsView) {
+        const isHidden = routeDirectionsView.classList.toggle('hidden');
+        btnToggleDirectionsView.classList.toggle('active', !isHidden);
+        const span = btnToggleDirectionsView.querySelector('span');
+        if (span) {
+          span.innerHTML = isHidden 
+            ? `View Directions (<span id="btn-directions-count">${activeNavSteps.length}</span>)` 
+            : `Hide Directions (<span id="btn-directions-count">${activeNavSteps.length}</span>)`;
+        }
+      }
+    });
   }
 
   if (btnClearRoute) {
@@ -1006,16 +1309,18 @@ document.addEventListener('DOMContentLoaded', () => {
       if (activeNavPanel) activeNavPanel.classList.add('hidden');
       if (navFloatingHud) navFloatingHud.classList.add('hidden');
       if (routeRiskCard) routeRiskCard.classList.add('hidden');
+      if (destinationArrivalCard) destinationArrivalCard.classList.add('hidden');
       clearMapLayers();
       activeNavigationRoute = null;
       activeRouteCoordinates = [];
       activeNavSteps = [];
+      activeRouteOptions = [];
       hideAlertBanner();
     });
   }
 
   // =========================================================================
-  // 4. LIVE TURN-BY-TURN NAVIGATION & GPS WATCHER
+  // LIVE TURN-BY-TURN NAVIGATION & GPS WATCHER
   // =========================================================================
   if (btnStartNav) {
     btnStartNav.addEventListener('click', () => {
@@ -1035,6 +1340,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    if (destinationArrivalCard) destinationArrivalCard.classList.add('hidden');
+
     // If user GPS is very far from the corridor origin (> 5 km), automatically activate simulated drive along this corridor
     if (!isSimulation && userCurrentPosition && activeRouteCoordinates.length > 0) {
       const startPt = activeRouteCoordinates[0];
@@ -1048,15 +1355,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     isNavigating = true;
+    isNavPaused = false;
     isSimulateDriving = isSimulation;
     currentStepIndex = 0;
     lastAnnouncedStepIndex = -1;
     offRouteCounter = 0;
 
+    // Reset Progress Bar
+    if (navProgressBarFill) navProgressBarFill.style.width = "0%";
+    if (navActiveRemainingDist) navActiveRemainingDist.textContent = `${totalTripDistanceKm.toFixed(1)} km`;
+    const h = Math.floor(totalTripDurationMin / 60);
+    const m = Math.round(totalTripDurationMin % 60);
+    if (navActiveRemainingTime) navActiveRemainingTime.textContent = h > 0 ? `${h}h ${m}m` : `${m} min`;
+
     // Show active nav HUD and panel
-    activeNavPanel.classList.remove('hidden');
-    navFloatingHud.classList.remove('hidden');
-    routeInfoCard.classList.add('hidden');
+    if (activeNavPanel) activeNavPanel.classList.remove('hidden');
+    if (navFloatingHud) navFloatingHud.classList.remove('hidden');
+    if (routeInfoCard) routeInfoCard.classList.add('hidden');
+
+    // Reset Pause button state
+    if (btnNavPause) btnNavPause.classList.remove('paused');
+    if (iconPauseNav) iconPauseNav.setAttribute('data-lucide', 'pause');
+    if (textPauseNav) textPauseNav.textContent = 'Pause';
 
     // Populate turn-by-turn steps list
     populateStepsAccordion(activeNavSteps);
@@ -1064,7 +1384,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial announcement & HUD update
     if (activeNavSteps.length > 0) {
       updateManeuverDisplay(activeNavSteps[0], activeNavSteps[0].distance_m || 250);
-      speakInstruction(activeNavSteps[0].instruction);
+      speakInstruction(`Starting route. In ${Math.round(activeNavSteps[0].distance_m || 250)} meters, ${activeNavSteps[0].instruction}`);
     }
 
     if (isSimulation) {
@@ -1075,12 +1395,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Recenter map on active vehicle position
     if (userCurrentPosition) {
-      map.flyTo([userCurrentPosition[1], userCurrentPosition[0]], 15, { duration: 1.0 });
+      map.flyTo([userCurrentPosition[1], userCurrentPosition[0]], 16, { duration: 1.0 });
     }
 
     refreshIcons();
   }
-
 
   function startRealGpsTrackingWatcher() {
     if (!("geolocation" in navigator)) {
@@ -1107,21 +1426,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function onLiveNavigationGpsUpdate(pos) {
-    if (!isNavigating) return;
+    if (!isNavigating || isNavPaused) return;
 
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
     const acc = pos.coords.accuracy || 10;
-    const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 42; // km/h
+    const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : (pos.coords.speed === 0 ? 0 : 42); // km/h
     const heading = pos.coords.heading || userGpsHeading || 0;
 
     userCurrentPosition = [lon, lat];
     userGpsAccuracy = acc;
     userGpsHeading = heading;
 
-    navLiveSpeed.textContent = `${speed} km/h`;
+    if (navLiveSpeed) navLiveSpeed.textContent = `${speed} km/h`;
 
     updateUserMapMarker(lat, lon, acc, heading);
+
+    if (isFollowMode && map) {
+      map.panTo([lat, lon], { animate: true });
+    }
 
     // Check progress & off-route status
     checkRouteProgressAndOffRoute([lon, lat]);
@@ -1138,11 +1461,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const firstPt = activeRouteCoordinates[0];
     userCurrentPosition = [firstPt[0], firstPt[1]];
     updateUserMapMarker(firstPt[1], firstPt[0], 5, 45);
-    map.flyTo([firstPt[1], firstPt[0]], 15, { duration: 0.8 });
+    map.flyTo([firstPt[1], firstPt[0]], 16, { duration: 0.8 });
 
     if (activeNavSteps.length > 0) {
       updateManeuverDisplay(activeNavSteps[0], activeNavSteps[0].distance_m || 250);
     }
+    if (navProgressBarFill) navProgressBarFill.style.width = "0%";
 
     clearInterval(simDriveTimer);
     simDriveTimer = setInterval(() => {
@@ -1150,9 +1474,9 @@ document.addEventListener('DOMContentLoaded', () => {
         clearInterval(simDriveTimer);
         return;
       }
+      if (isNavPaused) return;
 
-      if (simDriveIndex >= totalPoints) {
-        // Arrived at destination!
+      if (simDriveIndex >= totalPoints - 1) {
         handleArrivalAtDestination();
         return;
       }
@@ -1167,25 +1491,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
       userCurrentPosition = [currPt[0], currPt[1]];
       userGpsHeading = headingDeg;
-      navLiveSpeed.textContent = `52 km/h`;
+      if (navLiveSpeed) navLiveSpeed.textContent = `52 km/h`;
 
       updateUserMapMarker(currPt[1], currPt[0], 8, headingDeg);
+
+      if (isFollowMode && map) {
+        map.panTo([currPt[1], currPt[0]], { animate: true });
+      }
 
       // Check progress & maneuver update
       checkRouteProgressAndOffRoute(userCurrentPosition);
 
       // Advance smoothly along route
-      const stepIncrement = Math.max(1, Math.floor(totalPoints / 80));
+      const stepIncrement = Math.max(1, Math.floor(totalPoints / 70));
       simDriveIndex += stepIncrement;
-    }, 1200);
+    }, 1100);
   }
 
-
   // =========================================================================
-  // 5. TURN-BY-TURN STEP MATCHING & PROXIMITY CHECKING
+  // TURN-BY-TURN STEP MATCHING & PROXIMITY CHECKING
   // =========================================================================
   async function checkRouteProgressAndOffRoute(currPos) {
-    if (!activeRouteCoordinates || activeRouteCoordinates.length === 0) return;
+    if (!activeRouteCoordinates || activeRouteCoordinates.length === 0 || isNavPaused) return;
 
     // Send check telemetry to backend
     try {
@@ -1204,55 +1531,83 @@ document.addEventListener('DOMContentLoaded', () => {
       if (resp.ok) {
         const data = await resp.json();
         handleNavigationCheckResult(data);
+      } else {
+        performLocalNavigationCheck(currPos);
       }
     } catch (e) {
-      // Local client-side evaluation fallback
       performLocalNavigationCheck(currPos);
     }
   }
 
   function handleNavigationCheckResult(data) {
+    if (isNavPaused) return;
+
     // 1. Off-Route Detection (only during live GPS, not in simulation)
     if (data.is_off_route && !isSimulateDriving) {
       offRouteCounter++;
-      if (offRouteCounter >= 2 && !isRecalculating) {
-        triggerOffRouteRecalculation();
+      if (navOffrouteAlert) {
+        navOffrouteAlert.classList.remove('hidden');
+        if (navOffrouteDistText) {
+          navOffrouteDistText.textContent = `${Math.round(data.distance_to_route_m || 80)}m off planned route`;
+        }
+      }
+      if (offRouteCounter >= 3 && !isRecalculating) {
+        triggerRealtimeRecalculation();
       }
     } else {
       offRouteCounter = 0;
-      navOffrouteAlert.classList.add('hidden');
+      if (navOffrouteAlert) navOffrouteAlert.classList.add('hidden');
     }
-
 
     // 2. Hazard Proximity Warning (< 2 km)
     if (data.hazard_alert) {
-      navProximityAlert.classList.remove('hidden');
-      navProximityText.textContent = `⚠️ Caution: Approaching ${data.hazard_alert.hazard_name} in ${data.hazard_alert.distance_km} km. Safe bypass engaged.`;
+      if (navProximityAlert) navProximityAlert.classList.remove('hidden');
+      if (navProximityText) navProximityText.textContent = `⚠️ Caution: Approaching ${data.hazard_alert.hazard_name} in ${data.hazard_alert.distance_km} km. Safe detour active.`;
     } else {
-      navProximityAlert.classList.add('hidden');
+      if (navProximityAlert) navProximityAlert.classList.add('hidden');
     }
 
     // 3. Step Progress Update
     if (data.current_step) {
       updateManeuverDisplay(data.current_step, data.distance_to_next_m);
 
-      // Voice prompt when approaching within 350m
       if (data.distance_to_next_m < 350 && data.active_step_index !== lastAnnouncedStepIndex) {
         speakInstruction(`In ${Math.round(data.distance_to_next_m)} meters, ${data.current_step.instruction}`);
         lastAnnouncedStepIndex = data.active_step_index;
       }
     }
 
-    // 4. Update ETA
-    if (data.remaining_duration_min) {
+    // 4. Update Remaining Distance, ETA and Progress Bar
+    if (data.remaining_distance_km !== undefined) {
+      const remDist = Math.max(0, data.remaining_distance_km);
+      if (navActiveRemainingDist) {
+        navActiveRemainingDist.textContent = remDist > 1 ? `${remDist.toFixed(1)} km remaining` : `${Math.round(remDist * 1000)} m remaining`;
+      }
+      if (totalTripDistanceKm > 0) {
+        const pct = Math.min(100, Math.max(0, ((totalTripDistanceKm - remDist) / totalTripDistanceKm) * 100));
+        if (navProgressBarFill) navProgressBarFill.style.width = `${pct}%`;
+      }
+      if (remDist < 0.04) {
+        handleArrivalAtDestination();
+        return;
+      }
+    }
+
+    if (data.remaining_duration_min !== undefined) {
       const remainingMin = Math.round(data.remaining_duration_min);
-      hudEtaPill.textContent = `${remainingMin} min remaining`;
+      if (navActiveRemainingTime) {
+        const h = Math.floor(remainingMin / 60);
+        const m = Math.round(remainingMin % 60);
+        navActiveRemainingTime.textContent = h > 0 ? `${h}h ${m}m ETA` : `${m} min ETA`;
+      }
+      if (hudEtaPill) {
+        hudEtaPill.textContent = `${remainingMin} min remaining`;
+      }
     }
   }
 
   function performLocalNavigationCheck(currPos) {
-    // Simple nearest step distance check
-    if (!activeNavSteps || activeNavSteps.length === 0) return;
+    if (isNavPaused || !activeNavSteps || activeNavSteps.length === 0) return;
 
     let nearestStep = activeNavSteps[currentStepIndex];
     let distToStep = 250;
@@ -1271,24 +1626,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     updateManeuverDisplay(nearestStep, distToStep);
+
+    // Calculate remaining distance to destination
+    if (activeRouteCoordinates && activeRouteCoordinates.length > 0) {
+      const endPt = activeRouteCoordinates[activeRouteCoordinates.length - 1];
+      const ex = (endPt[0] - currPos[0]) * 111.0 * Math.cos(currPos[1] * Math.PI / 180);
+      const ey = (endPt[1] - currPos[1]) * 111.0;
+      const remKm = Math.sqrt(ex*ex + ey*ey);
+
+      if (navActiveRemainingDist) {
+        navActiveRemainingDist.textContent = remKm > 1 ? `${remKm.toFixed(1)} km remaining` : `${Math.round(remKm * 1000)} m remaining`;
+      }
+      if (totalTripDistanceKm > 0) {
+        const pct = Math.min(100, Math.max(0, ((totalTripDistanceKm - remKm) / totalTripDistanceKm) * 100));
+        if (navProgressBarFill) navProgressBarFill.style.width = `${pct}%`;
+      }
+
+      if (remKm < 0.04) {
+        handleArrivalAtDestination();
+      }
+    }
   }
 
   function updateManeuverDisplay(step, distanceM) {
     if (!step) return;
 
     const distStr = distanceM > 1000 ? `${(distanceM / 1000).toFixed(1)} km` : `${Math.round(distanceM)} m`;
+    const iconName = step.icon || getManeuverIcon(step.type, step.instruction);
 
     // Sidebar Card
-    navActiveDist.textContent = `In ${distStr}`;
-    navActiveText.textContent = step.instruction;
-    navActiveStreet.textContent = step.street_name || "Mountain Corridor";
-    navActiveIcon.setAttribute('data-lucide', step.icon || 'arrow-up');
+    if (navActiveDist) navActiveDist.textContent = `In ${distStr}`;
+    if (navActiveText) navActiveText.textContent = step.instruction;
+    if (navActiveStreet) navActiveStreet.textContent = step.street_name || "Mountain Corridor";
+    if (navActiveIcon) navActiveIcon.setAttribute('data-lucide', iconName);
 
     // Floating Map HUD
-    hudNextDist.textContent = `In ${distStr}`;
-    hudNextInstruction.textContent = step.instruction;
-    hudNextSub.textContent = step.street_name || "Mountain Safe Route";
-    hudManeuverIcon.setAttribute('data-lucide', step.icon || 'navigation');
+    if (hudNextDist) hudNextDist.textContent = `In ${distStr}`;
+    if (hudNextInstruction) hudNextInstruction.textContent = step.instruction;
+    if (hudNextSub) hudNextSub.textContent = step.street_name || "Mountain Safe Route";
+    if (hudManeuverIcon) hudManeuverIcon.setAttribute('data-lucide', iconName);
 
     // Highlight in accordion
     document.querySelectorAll('.step-item-row').forEach(row => {
@@ -1301,54 +1677,105 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshIcons();
   }
 
-  // Automatic Off-Route Recalculation
-  async function triggerOffRouteRecalculation() {
+  // Real-Time Recalculation Engine
+  async function triggerRealtimeRecalculation() {
+    if (isRecalculating) return;
     isRecalculating = true;
-    navOffrouteAlert.classList.remove('hidden');
-    speakInstruction("Off route. Recalculating landslide-safe detour.");
+    if (navOffrouteAlert) navOffrouteAlert.classList.remove('hidden');
+    if (btnNavRecalc) {
+      btnNavRecalc.disabled = true;
+      btnNavRecalc.innerHTML = `<div class="spinner-sm" style="position:static; margin-right:4px;"></div> Recalculating...`;
+    }
+    speakInstruction("Recalculating landslide-safe route from current location.");
 
     try {
       const endCoords = selectedDestination ? [selectedDestination.lon, selectedDestination.lat] : currentRegionData.end;
-      const resp = await fetch('/api/route', {
+      const resp = await fetch('/api/route/recalculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          start: userCurrentPosition,
-          end: endCoords,
-          hazard_points: [currentRegionData.hazard],
+          current_position: userCurrentPosition,
+          destination: endCoords,
+          avoid_hazards: true,
           include_steps: true
         })
       });
 
-
       if (resp.ok) {
         const data = await resp.json();
-        const chosen = data.is_rerouted ? data.recalculated_safe_route : data.primary_route;
+        const chosen = data.route || data.recalculated_safe_route || data.primary_route;
 
-        activeRouteCoordinates = chosen.coordinates;
-        activeNavSteps = chosen.steps || [];
-
-        if (safeRouteLayer) {
-          safeRouteLayer.setLatLngs(chosen.coordinates.map(c => [c[1], c[0]]));
+        if (data.route_options && data.route_options.length > 0) {
+          activeRouteOptions = data.route_options;
         }
 
+        activeRouteCoordinates = chosen.coordinates || [];
+        activeNavSteps = chosen.steps || [];
+        totalTripDistanceKm = chosen.distance_km || totalTripDistanceKm;
+        totalTripDurationMin = chosen.duration_min || totalTripDurationMin;
+
+        // Redraw polylines
+        redrawMapPolylines();
+
+        // Update steps list
+        renderDirectionsList(activeNavSteps);
         populateStepsAccordion(activeNavSteps);
-        speakInstruction("Safe detour route updated.");
+
+        // Update risk assessment if provided
+        if (data.route_risk_assessment) {
+          renderSegmentedRouteRisk(data.route_risk_assessment);
+        }
+
+        currentStepIndex = 0;
+        if (activeNavSteps.length > 0) {
+          updateManeuverDisplay(activeNavSteps[0], activeNavSteps[0].distance_m || 250);
+        }
+
+        speakInstruction("Landslide-safe detour route updated.");
+        if (navOffrouteAlert) navOffrouteAlert.classList.add('hidden');
       }
     } catch (e) {
-      console.warn("Rerouting error:", e);
+      console.warn("[Recalculate] Rerouting error:", e);
     } finally {
+      if (btnNavRecalc) {
+        btnNavRecalc.disabled = false;
+        btnNavRecalc.innerHTML = `<i data-lucide="refresh-cw"></i><span>Reroute</span>`;
+      }
       setTimeout(() => {
         isRecalculating = false;
-        navOffrouteAlert.classList.add('hidden');
-      }, 3000);
+        refreshIcons();
+      }, 2000);
     }
   }
 
   function handleArrivalAtDestination() {
-    speakInstruction("You have arrived at your destination. Navigation completed.");
-    alert("🎉 You have arrived safely at your destination!");
+    speakInstruction("You have arrived safely at your destination. Navigation completed.");
     stopLiveNavigation();
+
+    // Populate arrival card
+    if (arrivalDestName) {
+      arrivalDestName.textContent = selectedDestination ? selectedDestination.name : "Target Destination";
+    }
+    if (arrivalMetricDist) {
+      arrivalMetricDist.textContent = `${totalTripDistanceKm > 0 ? totalTripDistanceKm.toFixed(1) : "—"} km`;
+    }
+    if (arrivalMetricDur) {
+      const h = Math.floor(totalTripDurationMin / 60);
+      const m = Math.round(totalTripDurationMin % 60);
+      arrivalMetricDur.textContent = h > 0 ? `${h}h ${m}m` : `${m || 15} min`;
+    }
+    if (destinationArrivalCard) {
+      destinationArrivalCard.classList.remove('hidden');
+      destinationArrivalCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    refreshIcons();
+  }
+
+  if (btnArrivalDismiss) {
+    btnArrivalDismiss.addEventListener('click', () => {
+      if (destinationArrivalCard) destinationArrivalCard.classList.add('hidden');
+      if (routeInfoCard) routeInfoCard.classList.remove('hidden');
+    });
   }
 
   // Voice Guidance (SpeechSynthesis API)
@@ -1367,28 +1794,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Populate Collapsible Steps List
+  // Populate Collapsible Steps List inside Active Nav Panel
   function populateStepsAccordion(steps) {
+    if (!navFullStepsList) return;
     navFullStepsList.innerHTML = '';
-    stepsCountBadge.textContent = steps.length;
+    if (stepsCountBadge) stepsCountBadge.textContent = steps.length;
 
     steps.forEach(step => {
       const row = document.createElement('div');
       row.className = 'step-item-row';
       row.dataset.step = step.step_number;
 
-      const dist = step.distance_m > 1000 ? `${step.distance_km} km` : `${step.distance_m} m`;
+      const dist = (step.distance_m || 0) > 1000 
+        ? `${((step.distance_m || 0) / 1000).toFixed(1)} km` 
+        : `${Math.round(step.distance_m || 0)} m`;
+
+      const iconName = step.icon || getManeuverIcon(step.type, step.instruction);
 
       row.innerHTML = `
         <div class="step-icon-wrap">
-          <i data-lucide="${step.icon || 'arrow-up'}"></i>
+          <i data-lucide="${iconName}"></i>
         </div>
         <div class="step-text-wrap">
-          <div><b>${escapeHtml(step.instruction)}</b></div>
+          <div><b>${escapeHtml(step.instruction || '')}</b></div>
           <div style="color:var(--text-dim); font-size:0.7rem;">${escapeHtml(step.street_name || '')}</div>
         </div>
         <div class="step-dist-pill">${dist}</div>
       `;
+
+      row.addEventListener('click', () => {
+        highlightStepOnMap(step);
+      });
 
       navFullStepsList.appendChild(row);
     });
@@ -1405,12 +1841,54 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Navigation Control Toolbar Handlers
+  if (btnNavPause) {
+    btnNavPause.addEventListener('click', () => {
+      isNavPaused = !isNavPaused;
+      btnNavPause.classList.toggle('paused', isNavPaused);
+      if (isNavPaused) {
+        if (iconPauseNav) iconPauseNav.setAttribute('data-lucide', 'play');
+        if (textPauseNav) textPauseNav.textContent = 'Resume';
+        setGpsStatus('warning', 'Navigation Paused');
+        speakInstruction('Navigation paused.');
+      } else {
+        if (iconPauseNav) iconPauseNav.setAttribute('data-lucide', 'pause');
+        if (textPauseNav) textPauseNav.textContent = 'Pause';
+        setGpsStatus('active', isSimulateDriving ? 'Simulated Drive Active' : 'Navigating (Live GPS)');
+        speakInstruction('Resuming navigation.');
+      }
+      refreshIcons();
+    });
+  }
+
+  if (btnNavRecenter) {
+    btnNavRecenter.addEventListener('click', () => {
+      isFollowMode = true;
+      if (userCurrentPosition && map) {
+        map.flyTo([userCurrentPosition[1], userCurrentPosition[0]], 16, { duration: 0.8 });
+      }
+    });
+  }
+
+  if (btnNavRecalc) {
+    btnNavRecalc.addEventListener('click', () => {
+      triggerRealtimeRecalculation();
+    });
+  }
+
+  if (btnOffrouteRecalcNow) {
+    btnOffrouteRecalcNow.addEventListener('click', () => {
+      triggerRealtimeRecalculation();
+    });
+  }
+
   // End Navigation Handlers
   if (btnEndNav) btnEndNav.addEventListener('click', stopLiveNavigation);
   if (btnHudEnd) btnHudEnd.addEventListener('click', stopLiveNavigation);
 
   function stopLiveNavigation() {
     isNavigating = false;
+    isNavPaused = false;
     isSimulateDriving = false;
 
     if (navWatchId !== null) {
@@ -1418,10 +1896,15 @@ document.addEventListener('DOMContentLoaded', () => {
       navWatchId = null;
     }
     clearInterval(simDriveTimer);
+    simDriveTimer = null;
 
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+
+    if (iconPauseNav) iconPauseNav.setAttribute('data-lucide', 'pause');
+    if (textPauseNav) textPauseNav.textContent = 'Pause';
+    if (btnNavPause) btnNavPause.classList.remove('paused');
 
     if (activeNavPanel) activeNavPanel.classList.add('hidden');
     if (navFloatingHud) navFloatingHud.classList.add('hidden');
@@ -1448,7 +1931,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnMapRecenter) {
     btnMapRecenter.addEventListener('click', () => {
       if (userCurrentPosition && map) {
-        map.flyTo([userCurrentPosition[1], userCurrentPosition[0]], 15, { duration: 0.8 });
+        map.flyTo([userCurrentPosition[1], userCurrentPosition[0]], 16, { duration: 0.8 });
       } else {
         requestInitialLocation(false);
       }
@@ -1553,13 +2036,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function clearMapLayers() {
-    if (primaryRouteLayer) map.removeLayer(primaryRouteLayer);
-    if (safeRouteLayer) map.removeLayer(safeRouteLayer);
-    geofenceLayersGroup.clearLayers();
-    hazardMarkersGroup.clearLayers();
-    routeMarkersGroup.clearLayers();
-    routeRiskSegmentsGroup.clearLayers();
-    if (heatmapLayer) map.removeLayer(heatmapLayer);
+    if (primaryRouteLayer && map && map.hasLayer(primaryRouteLayer)) map.removeLayer(primaryRouteLayer);
+    if (safeRouteLayer && map && map.hasLayer(safeRouteLayer)) map.removeLayer(safeRouteLayer);
+    if (alternativeRouteLayers && alternativeRouteLayers.length > 0) {
+      alternativeRouteLayers.forEach(l => { if (map && map.hasLayer(l)) map.removeLayer(l); });
+      alternativeRouteLayers = [];
+    }
+    if (stepHighlightMarker && map && map.hasLayer(stepHighlightMarker)) {
+      map.removeLayer(stepHighlightMarker);
+      stepHighlightMarker = null;
+    }
+    if (geofenceLayersGroup) geofenceLayersGroup.clearLayers();
+    if (hazardMarkersGroup) hazardMarkersGroup.clearLayers();
+    if (routeMarkersGroup) routeMarkersGroup.clearLayers();
+    if (routeRiskSegmentsGroup) routeRiskSegmentsGroup.clearLayers();
+    if (heatmapLayer && map && map.hasLayer(heatmapLayer)) map.removeLayer(heatmapLayer);
   }
 
   function showAlertBanner(info) {
@@ -1635,7 +2126,42 @@ document.addEventListener('DOMContentLoaded', () => {
         ]
       },
       geofences: mockGeofence,
-      eta_impact_min: 16
+      eta_impact_min: 16,
+      route_options: [
+        {
+          id: "route_recommended",
+          title: "Autonomous Landslide Safe Detour",
+          label_badge: "RECOMMENDED",
+          distance_km: 84.5,
+          duration_min: 104,
+          steps: [
+            { step_number: 1, type: "depart", instruction: "Depart origin onto safe corridor", street_name: "NH58", distance_m: 20000, distance_km: 20, duration_s: 1500, location: start, icon: "navigation" },
+            { step_number: 2, type: "turn", instruction: "Follow designated mountain safe detour bypass", street_name: "Safe Escarpment Bypass", distance_m: 35000, distance_km: 35, duration_s: 2400, location: [hLon - 0.06, hLat + 0.08], icon: "corner-up-right" },
+            { step_number: 3, type: "arrive", instruction: "Arrive safely at destination", street_name: "Destination", distance_m: 0, distance_km: 0, duration_s: 0, location: end, icon: "map-pin" }
+          ],
+          coordinates: safeCoords.map(c => [c[1], c[0]]),
+          hazard_score: 0.18,
+          risk_level: "LOW",
+          recommendation_reason: "Safely bypasses active landslide corridor via reinforced escarpment highway.",
+          is_recommended: true
+        },
+        {
+          id: "route_fastest",
+          title: "Primary Valley Road (Hazard Blocked)",
+          label_badge: "BLOCKED",
+          distance_km: 74.2,
+          duration_min: 88,
+          steps: [
+            { step_number: 1, type: "depart", instruction: "Depart origin onto mountain corridor", street_name: "NH58", distance_m: 25000, distance_km: 25, duration_s: 1800, location: start, icon: "navigation" },
+            { step_number: 2, type: "arrive", instruction: "Arrive at destination", street_name: "Destination", distance_m: 0, distance_km: 0, duration_s: 0, location: end, icon: "map-pin" }
+          ],
+          coordinates: directCoords.map(c => [c[1], c[0]]),
+          hazard_score: 0.88,
+          risk_level: "CRITICAL",
+          recommendation_reason: "Passes through active landslide zone with LHI 0.88. Travel prohibited.",
+          is_fastest: true
+        }
+      ]
     };
 
     displayCalculatedRoute(mockRouteData, start, end);
@@ -1811,6 +2337,49 @@ document.addEventListener('DOMContentLoaded', () => {
     // 8. Render Prevention Infrastructure along simulated detour
     const simCoords = simData.recalculated_safe_route ? simData.recalculated_safe_route.coordinates : null;
     fetchAndRenderPreventionAssets(activeRegionKey, simCoords);
+
+    // 9. Wire Route Options & Turn-by-Turn Navigation for Simulated Route
+    const chosen = simData.recalculated_safe_route || simData.blocked_primary_route;
+    if (chosen) {
+      activeRouteCoordinates = chosen.coordinates || [];
+      activeNavSteps = chosen.steps || [];
+      totalTripDistanceKm = chosen.distance_km || 0;
+      totalTripDurationMin = chosen.duration_min || 0;
+      activeRouteOptions = [
+        {
+          id: "route_recommended",
+          title: "Autonomous Detour Bypass",
+          label_badge: "SAFE DETOUR",
+          distance_km: chosen.distance_km,
+          duration_min: chosen.duration_min,
+          steps: chosen.steps || [],
+          coordinates: chosen.coordinates || [],
+          hazard_score: 0.18,
+          risk_level: "LOW",
+          recommendation_reason: "Autonomous detour avoiding the simulated landslide obstacle.",
+          is_recommended: true
+        }
+      ];
+      if (simData.blocked_primary_route) {
+        activeRouteOptions.push({
+          id: "route_fastest",
+          title: "Direct Road (Hazard Blocked)",
+          label_badge: "BLOCKED",
+          distance_km: simData.blocked_primary_route.distance_km,
+          duration_min: simData.blocked_primary_route.duration_min,
+          steps: simData.blocked_primary_route.steps || [],
+          coordinates: simData.blocked_primary_route.coordinates || [],
+          hazard_score: 0.92,
+          risk_level: "CRITICAL",
+          recommendation_reason: "Direct corridor blocked by active rockfall / slope failure.",
+          is_fastest: true
+        });
+      }
+      renderRouteOptions(activeRouteOptions);
+      renderDirectionsList(activeNavSteps);
+      updateRouteInfoCard(simData, chosen);
+      if (routeInfoCard) routeInfoCard.classList.remove('hidden');
+    }
   }
 
   // =========================================================================
