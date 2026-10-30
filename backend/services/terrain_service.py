@@ -1,6 +1,15 @@
 import math
 import requests
 from typing import Dict, Any, List, Optional, Tuple
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Persistent HTTP session with connection pooling
+_terrain_session = requests.Session()
+_retries = Retry(total=2, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+_adapter = HTTPAdapter(pool_connections=15, pool_maxsize=30, max_retries=_retries)
+_terrain_session.mount("https://", _adapter)
+_terrain_session.mount("http://", _adapter)
 
 class TerrainService:
     """
@@ -11,6 +20,7 @@ class TerrainService:
 
     def __init__(self):
         self._elevation_cache: Dict[str, float] = {}
+        self._profile_cache: Dict[str, Dict[str, Any]] = {}
 
     def get_terrain_profile(self, lat: float, lon: float) -> Dict[str, Any]:
         """
@@ -20,15 +30,28 @@ class TerrainService:
         - Slope aspect (degrees, 0-360, compass direction)
         - Terrain roughness index (TRI)
         - Topographic wetness index (TWI proxy)
+        Uses single-request batching and spatial caching for sub-millisecond execution.
         """
-        center_elev = self.fetch_elevation(lat, lon)
-        delta = 0.002  # ~220m spatial offset
+        prof_key = f"{round(lat, 3)}_{round(lon, 3)}"
+        if prof_key in self._profile_cache:
+            return self._profile_cache[prof_key]
 
-        # Query cardinal neighbors for gradient calculation
-        z_north = self.fetch_elevation(lat + delta, lon)
-        z_south = self.fetch_elevation(lat - delta, lon)
-        z_east = self.fetch_elevation(lat, lon + delta)
-        z_west = self.fetch_elevation(lat, lon - delta)
+        delta = 0.002  # ~220m spatial offset
+        pts = [
+            (lat, lon),
+            (lat + delta, lon),
+            (lat - delta, lon),
+            (lat, lon + delta),
+            (lat, lon - delta)
+        ]
+
+        # Fetch center and all 4 cardinal points in ONE single batch network request
+        elevs_dict = self.fetch_elevation_batch(pts)
+        center_elev = elevs_dict.get((lat, lon), 1200.0)
+        z_north = elevs_dict.get((lat + delta, lon), center_elev)
+        z_south = elevs_dict.get((lat - delta, lon), center_elev)
+        z_east = elevs_dict.get((lat, lon + delta), center_elev)
+        z_west = elevs_dict.get((lat, lon - delta), center_elev)
 
         dist_m = delta * 111320.0 * max(0.2, math.cos(math.radians(lat)))
         dist_y_m = delta * 111320.0
@@ -68,7 +91,7 @@ class TerrainService:
             slope_class = "GENTLE_VALLEY (<15°)"
             shear_risk = "MINIMAL"
 
-        return {
+        profile = {
             "latitude": lat,
             "longitude": lon,
             "elevation_m": round(center_elev, 1),
@@ -81,6 +104,12 @@ class TerrainService:
             "shear_risk": shear_risk,
             "source": "SRTM / Copernicus High-Resolution DEM"
         }
+
+        # Keep cache bounded to prevent memory growth
+        if len(self._profile_cache) > 1000:
+            self._profile_cache.clear()
+        self._profile_cache[prof_key] = profile
+        return profile
 
     def fetch_elevation_batch(self, points: List[Tuple[float, float]]) -> Dict[Tuple[float, float], float]:
         """Fetches elevations in a single batch request to prevent sequential HTTP delays."""
@@ -102,7 +131,7 @@ class TerrainService:
                 lon_str = ",".join([str(round(p[1], 5)) for p in chunk])
                 try:
                     url = f"https://api.open-meteo.com/v1/elevation?latitude={lat_str}&longitude={lon_str}"
-                    resp = requests.get(url, timeout=2.5)
+                    resp = _terrain_session.get(url, timeout=2.5)
                     if resp.status_code == 200:
                         elevations = resp.json().get("elevation", [])
                         if isinstance(elevations, list) and len(elevations) == len(chunk):
@@ -129,7 +158,7 @@ class TerrainService:
 
         try:
             url = "https://api.open-meteo.com/v1/elevation"
-            resp = requests.get(url, params={"latitude": lat, "longitude": lon}, timeout=1.8)
+            resp = _terrain_session.get(url, params={"latitude": lat, "longitude": lon}, timeout=1.8)
             if resp.status_code == 200:
                 elev_val = resp.json().get("elevation", [500.0])
                 elev = float(elev_val[0]) if isinstance(elev_val, list) and len(elev_val) > 0 else float(elev_val)

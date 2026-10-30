@@ -1,4 +1,5 @@
 import math
+import time
 from typing import List, Dict, Any, Optional, Tuple
 from services.gsi_service import GSILandslideService
 from services.nasa_gpm_service import NASAGPMService
@@ -18,6 +19,8 @@ class RouteRiskAssessmentService:
         self.gsi = gsi_service
         self.gpm = gpm_service
         self.prediction = prediction_service
+        self._risk_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+        self._cache_ttl: float = 900.0  # 15 minutes
 
     def analyze_route_risk(self, route_coords: List[List[float]],
                            route_distance_km: float = 0.0,
@@ -35,6 +38,14 @@ class RouteRiskAssessmentService:
                 "gsi_records_near_route": [],
                 "intersecting_susceptibility_zones": []
             }
+
+        # Cache check for identical route polyline segment
+        cache_key = f"{len(route_coords)}_{route_coords[0][0]:.4f}_{route_coords[0][1]:.4f}_{route_coords[-1][0]:.4f}_{route_coords[-1][1]:.4f}_{round(route_distance_km, 2)}"
+        now = time.time()
+        if cache_key in self._risk_cache:
+            ts, cached_res = self._risk_cache[cache_key]
+            if now - ts < self._cache_ttl:
+                return cached_res
 
         # 1. Spatial intersection with GSI historical landslides
         gsi_near = self.gsi.find_records_near_route(route_coords, buffer_km=4.0)
@@ -191,7 +202,7 @@ class RouteRiskAssessmentService:
         else:
             status = "LOWER_ESTIMATED_HAZARD"
 
-        return {
+        result = {
             "route_hazard_index": route_h_index,
             "route_safety_status": status,
             "total_segments": len(segments),
@@ -202,3 +213,8 @@ class RouteRiskAssessmentService:
             "gsi_records_near_route": gsi_near[:6],
             "intersecting_susceptibility_zones": zones_intersected
         }
+        if len(self._risk_cache) > 100:
+            oldest = next(iter(self._risk_cache))
+            self._risk_cache.pop(oldest, None)
+        self._risk_cache[cache_key] = (now, result)
+        return result

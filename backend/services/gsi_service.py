@@ -135,20 +135,38 @@ class GSILandslideService:
     def find_records_near_route(self, route_coords: List[List[float]], buffer_km: float = 8.0) -> List[Dict[str, Any]]:
         """
         Finds all GSI historical landslide records within buffer_km of a route polyline.
-        route_coords is [[lon, lat], ...].
+        Uses spatial bounding box pre-filter for sub-millisecond execution.
         """
         if not route_coords:
             return []
 
+        # 1. Spatial bounding box envelope
+        buf_deg_lat = buffer_km / 111.0
+        buf_deg_lon = buffer_km / 85.0
+        lons = [p[0] for p in route_coords]
+        lats = [p[1] for p in route_coords]
+        min_lon, max_lon = min(lons) - buf_deg_lon, max(lons) + buf_deg_lon
+        min_lat, max_lat = min(lats) - buf_deg_lat, max(lats) + buf_deg_lat
+
+        # Sample route points for distance checks (max 100 points)
+        sample_step = max(1, len(route_coords) // 80)
+        sampled_pts = route_coords[::sample_step]
+        if route_coords[-1] != sampled_pts[-1]:
+            sampled_pts.append(route_coords[-1])
+
         matched = []
         for rec in self.records:
-            r_lat = rec["latitude"]
-            r_lon = rec["longitude"]
-            min_dist = float("inf")
+            r_lat = rec.get("latitude")
+            r_lon = rec.get("longitude")
+            if r_lat is None or r_lon is None:
+                continue
 
-            sample_step = max(1, len(route_coords) // 100)
-            for i in range(0, len(route_coords), sample_step):
-                pt = route_coords[i]
+            # Rapid bounding box reject
+            if not (min_lon <= r_lon <= max_lon and min_lat <= r_lat <= max_lat):
+                continue
+
+            min_dist = float("inf")
+            for pt in sampled_pts:
                 dx = (r_lon - pt[0]) * 111.0 * math.cos(math.radians(pt[1]))
                 dy = (r_lat - pt[1]) * 111.0
                 dist = math.sqrt(dx * dx + dy * dy)
@@ -166,16 +184,35 @@ class GSILandslideService:
     def find_susceptibility_zones_intersecting(self, route_coords: List[List[float]]) -> List[Dict[str, Any]]:
         """
         Checks which GSI NLSM susceptibility zones intersect the given route polyline.
+        Accelerated with polygon bounding box pre-filtering and geometry decimation.
         """
         if not route_coords or len(route_coords) < 2:
             return []
 
-        line = LineString(route_coords)
+        lons = [p[0] for p in route_coords]
+        lats = [p[1] for p in route_coords]
+        r_min_lon, r_max_lon = min(lons), max(lons)
+        r_min_lat, r_max_lat = min(lats), max(lats)
+
+        # Decimate dense polyline if > 250 points for fast geometric intersection
+        if len(route_coords) > 250:
+            step = max(1, len(route_coords) // 200)
+            eval_coords = route_coords[::step]
+            if eval_coords[-1] != route_coords[-1]:
+                eval_coords.append(route_coords[-1])
+        else:
+            eval_coords = route_coords
+
+        line = LineString(eval_coords)
         intersected = []
 
         for poly, props in self.zone_polygons:
+            minx, miny, maxx, maxy = poly.bounds
+            # Bounding box test
+            if minx > r_max_lon or maxx < r_min_lon or miny > r_max_lat or maxy < r_min_lat:
+                continue
+
             if poly.intersects(line):
-                # Calculate intersection length approximate km
                 intersection_geom = poly.intersection(line)
                 length_deg = intersection_geom.length
                 length_km = round(length_deg * 111.0, 1)

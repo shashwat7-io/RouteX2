@@ -1,4 +1,5 @@
 import math
+import time
 import requests
 from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
@@ -6,12 +7,23 @@ import geopandas as gpd
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon
 from shapely.ops import transform
 import pyproj
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Persistent HTTP session with connection pooling for OSRM / ORS
+_router_session = requests.Session()
+_retries = Retry(total=2, backoff_factor=0.15, status_forcelist=[500, 502, 503, 504])
+_adapter = HTTPAdapter(pool_connections=15, pool_maxsize=30, max_retries=_retries)
+_router_session.mount("https://", _adapter)
+_router_session.mount("http://", _adapter)
 
 class RouterEngine:
     def __init__(self, ors_api_key: Optional[str] = None):
         self.ors_api_key = ors_api_key
         self.wgs84_to_mercator = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform
         self.mercator_to_wgs84 = pyproj.Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True).transform
+        self._route_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+        self._cache_ttl_sec = 900.0  # 15 minutes TTL
 
     def get_route(self, start_coords: List[float], end_coords: List[float], avoid_polygons: Optional[List] = None, include_steps: bool = True) -> Dict[str, Any]:
         """
@@ -31,6 +43,7 @@ class RouterEngine:
     def _query_osrm_with_detour(self, start: List[float], end: List[float], avoid_polygons: Optional[List] = None, include_steps: bool = True) -> Dict[str, Any]:
         """
         Queries OSRM public API with steps enabled. If avoid_polygons provided, inserts detour waypoint bypassing hazard center.
+        Features persistent connection pooling and in-memory caching.
         """
         waypoints = [start]
         
@@ -59,11 +72,20 @@ class RouterEngine:
         
         # Build OSRM query URL with steps=true and overview=full
         coord_str = ";".join([f"{pt[0]},{pt[1]}" for pt in waypoints])
+        cache_key = f"{coord_str}_{include_steps}"
+        now = time.time()
+
+        # Check route cache
+        if cache_key in self._route_cache:
+            c_time, c_data = self._route_cache[cache_key]
+            if now - c_time < self._cache_ttl_sec:
+                return dict(c_data)
+
         steps_param = "&steps=true&annotations=true" if include_steps else ""
         osrm_url = f"http://router.project-osrm.org/route/v1/driving/{coord_str}?overview=full&geometries=geojson{steps_param}&alternatives=true"
         
         try:
-            resp = requests.get(osrm_url, timeout=4.0, headers={"User-Agent": "RouteX/2.0 (Landslide Safe Navigation Engine)"})
+            resp = _router_session.get(osrm_url, timeout=3.5, headers={"User-Agent": "RouteX/2.0 (Landslide Safe Navigation Engine)"})
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("routes") and len(data["routes"]) > 0:

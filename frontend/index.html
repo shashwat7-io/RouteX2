@@ -128,7 +128,7 @@
           <div class="location-input-row">
             <div class="input-icon-wrapper">
               <i data-lucide="crosshair" class="input-icon"></i>
-              <input type="text" id="nav-origin-input" class="location-text-field" placeholder="Detecting current GPS position..." readonly />
+              <input type="text" id="nav-origin-input" class="location-text-field" placeholder="Enter origin address, lat,lon or use GPS..." title="Type origin address or coordinates, or click 'Use My Location'" />
             </div>
             <button id="btn-detect-gps" class="btn-location-action" title="Request Current GPS Fix">
               <i data-lucide="map-pin"></i>
@@ -266,6 +266,15 @@
             <button id="btn-start-nav" class="btn-primary start-nav-btn pulse-glow">
               <i data-lucide="navigation"></i>
               <span>START NAVIGATION</span>
+            </button>
+            <button id="btn-gmaps-nav" class="btn-gmaps-nav" title="Navigate this route using Google Maps">
+              <svg class="gmaps-pin-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#EA4335"/>
+                <path d="M12 2C9.79 2 8 3.79 8 6c0 3 4 8 4 8s4-5 4-8c0-2.21-1.79-4-4-4z" fill="#4285F4"/>
+                <circle cx="12" cy="9" r="2.8" fill="#FBBC05"/>
+                <path d="M12 6.2a2.8 2.8 0 0 0-2.6 1.8l1.1 1.1c.3-.5.9-.9 1.5-.9z" fill="#34A853"/>
+              </svg>
+              <span>NAVIGATE WITH GOOGLE MAPS</span>
             </button>
             <button id="btn-toggle-directions-view" class="btn-secondary" title="View turn-by-turn directions">
               <i data-lucide="list"></i>
@@ -459,7 +468,7 @@
             </div>
           </div>
 
-          <!-- Navigation Control Toolbar (All 7 Google Maps Controls) -->
+          <!-- Navigation Control Toolbar (Google Maps Controls + Handoff) -->
           <div class="nav-controls-toolbar">
             <button id="btn-nav-pause" class="btn-toolbar-toggle" title="Pause / Resume Live Navigation">
               <i data-lucide="pause" id="icon-pause-nav"></i>
@@ -472,6 +481,15 @@
             <button id="btn-nav-recalc" class="btn-toolbar-toggle" title="Recalculate Route from Current GPS">
               <i data-lucide="refresh-cw"></i>
               <span>Reroute</span>
+            </button>
+            <button id="btn-nav-gmaps-handoff" class="btn-toolbar-toggle" title="Open and Navigate in Google Maps">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#EA4335"/>
+                <path d="M12 2C9.79 2 8 3.79 8 6c0 3 4 8 4 8s4-5 4-8c0-2.21-1.79-4-4-4z" fill="#4285F4"/>
+                <circle cx="12" cy="9" r="2.8" fill="#FBBC05"/>
+                <path d="M12 6.2a2.8 2.8 0 0 0-2.6 1.8l1.1 1.1c.3-.5.9-.9 1.5-.9z" fill="#34A853"/>
+              </svg>
+              <span>G-Maps</span>
             </button>
             <button id="btn-toggle-voice" class="btn-toolbar-toggle active" title="Toggle Spoken Voice Guidance">
               <i data-lucide="volume-2" id="voice-icon"></i>
@@ -958,6 +976,139 @@
           <i data-lucide="check-circle-2"></i>
           <span><b>Offline Mode Enabled:</b> Route maps, regional presets, and this emergency guide are fully cached in browser storage.</span>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Google Maps Navigation Handoff & Risk Review Modal -->
+  <div id="gmaps-handoff-modal" class="gmaps-modal hidden" role="dialog" aria-modal="true" aria-labelledby="gmaps-modal-title">
+    <div class="gmaps-modal-overlay"></div>
+    <div class="gmaps-modal-content">
+      <div class="gmaps-modal-header">
+        <div class="gmaps-header-brand">
+          <div class="gmaps-brand-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#EA4335"/>
+              <path d="M12 2C9.79 2 8 3.79 8 6c0 3 4 8 4 8s4-5 4-8c0-2.21-1.79-4-4-4z" fill="#4285F4"/>
+              <circle cx="12" cy="9" r="2.8" fill="#FBBC05"/>
+              <path d="M12 6.2a2.8 2.8 0 0 0-2.6 1.8l1.1 1.1c.3-.5.9-.9 1.5-.9z" fill="#34A853"/>
+            </svg>
+          </div>
+          <div>
+            <h2 id="gmaps-modal-title">Google Maps Navigation Handoff</h2>
+            <p class="gmaps-modal-subtitle">RouteX Landslide Hazard Briefing Before Departure</p>
+          </div>
+        </div>
+        <button id="btn-close-gmaps-modal" class="gmaps-close-btn" aria-label="Close dialog">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <div class="gmaps-modal-body">
+        <!-- Route Trip Info Banner -->
+        <div class="gmaps-trip-banner">
+          <div class="gmaps-endpoint-row">
+            <span class="gmaps-point-tag origin">ORIGIN</span>
+            <span id="gmaps-origin-text" class="gmaps-endpoint-val">Current GPS Position</span>
+          </div>
+          <div class="gmaps-arrow-divider">➔</div>
+          <div class="gmaps-endpoint-row">
+            <span class="gmaps-point-tag dest">DESTINATION</span>
+            <span id="gmaps-dest-text" class="gmaps-endpoint-val">Selected Destination</span>
+          </div>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="gmaps-metrics-grid">
+          <div class="gmaps-metric-cell">
+            <span class="cell-label">RouteX Distance</span>
+            <span id="gmaps-metric-dist" class="cell-value">-- km</span>
+          </div>
+          <div class="gmaps-metric-cell">
+            <span class="cell-label">RouteX Est. Duration</span>
+            <span id="gmaps-metric-dur" class="cell-value">-- min</span>
+          </div>
+          <div class="gmaps-metric-cell">
+            <span class="cell-label">Overall Landslide Risk</span>
+            <span id="gmaps-risk-badge" class="risk-badge-pill safe">VERIFIED SAFE</span>
+          </div>
+        </div>
+
+        <!-- Landslide Hazard Intelligence Breakdown -->
+        <div class="gmaps-intelligence-box">
+          <div class="box-title">
+            <i data-lucide="shield-check" id="gmaps-intel-icon"></i>
+            <span>RouteX Multi-Source Hazard Analysis</span>
+          </div>
+          
+          <div class="intel-items-list">
+            <div class="intel-row">
+              <span class="intel-tag gsi">GSI Historical Inventory</span>
+              <span id="gmaps-intel-gsi-slides" class="intel-desc">Analyzing 4km buffer zone...</span>
+            </div>
+            <div class="intel-row">
+              <span class="intel-tag zones">GSI Susceptibility (NLSM)</span>
+              <span id="gmaps-intel-gsi-zones" class="intel-desc">Mapping national susceptibility zones...</span>
+            </div>
+            <div class="intel-row">
+              <span class="intel-tag nasa">NASA GPM Satellite Precipitation</span>
+              <span id="gmaps-intel-nasa-rain" class="intel-desc">Fetching 24h satellite rainfall observations...</span>
+            </div>
+            <div class="intel-row">
+              <span class="intel-tag ml">XGBoost ML Hazard Score</span>
+              <span id="gmaps-intel-ml-score" class="intel-desc">Evaluating terrain slope stability index...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Critical Risky Segments Alert (Dynamic) -->
+        <div id="gmaps-segments-alert" class="gmaps-segments-warning hidden">
+          <i data-lucide="alert-triangle"></i>
+          <div>
+            <strong>High-Risk Slope Corridors Identified:</strong>
+            <p id="gmaps-segments-text">RouteX detected elevated hazard zones along this mountain pass. Drive with heightened vigilance.</p>
+          </div>
+        </div>
+
+        <!-- Independent Google Maps Routing Notice (Essential Requirements 5 & 9) -->
+        <div class="gmaps-disclaimer-box">
+          <div class="disclaimer-header">
+            <i data-lucide="info"></i>
+            <span>Important Navigation Limitation Notice</span>
+          </div>
+          <p>
+            Google Maps calculates its navigation route <strong>independently</strong> and does <strong>not</strong> incorporate RouteX's real-time landslide hazard scores, GSI susceptibility polygons, or NASA rainfall avoidance detours.
+          </p>
+          <p class="disclaimer-sub">
+            If Google Maps directs you toward an alternate road or known hazard corridor, prioritize RouteX safe detour guidance and local NDMA/SDMA advisories.
+          </p>
+          <div class="disclaimer-footer">
+            <span id="gmaps-timestamp-text">Data verified: Live Open-Meteo, GSI & NASA GPM</span>
+          </div>
+        </div>
+
+        <!-- Fallback Link Banner if App Does Not Open Automatically -->
+        <div id="gmaps-fallback-banner" class="gmaps-fallback-banner hidden">
+          <i data-lucide="info"></i>
+          <div>
+            <span>If Google Maps did not open automatically, </span>
+            <a id="gmaps-direct-link" href="#" target="_blank" rel="noopener noreferrer">click here to launch directly ↗</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Action Buttons -->
+      <div class="gmaps-modal-actions">
+        <button id="btn-gmaps-cancel" class="btn-outline">
+          <span>Cancel (Stay in RouteX)</span>
+        </button>
+        <button id="btn-gmaps-confirm-launch" class="btn-primary gmaps-launch-btn">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+          </svg>
+          <span>Continue to Google Maps</span>
+          <i data-lucide="external-link" style="width:14px; height:14px; margin-left:4px;"></i>
+        </button>
       </div>
     </div>
   </div>

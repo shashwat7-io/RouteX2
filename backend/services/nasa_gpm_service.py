@@ -4,6 +4,15 @@ import math
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Persistent HTTP session with connection pooling
+_gpm_session = requests.Session()
+_retries = Retry(total=2, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+_adapter = HTTPAdapter(pool_connections=15, pool_maxsize=30, max_retries=_retries)
+_gpm_session.mount("https://", _adapter)
+_gpm_session.mount("http://", _adapter)
 
 class NASAGPMService:
     """
@@ -161,12 +170,12 @@ class NASAGPMService:
             params = {
                 "latitude": lat,
                 "longitude": lon,
-                "hourly": "precipitation,rain,showers",
+                "hourly": "precipitation",
                 "past_days": past_days,
                 "forecast_days": 1,
                 "timezone": "UTC"
             }
-            resp = requests.get(url, params=params, timeout=4.0)
+            resp = _gpm_session.get(url, params=params, timeout=3.0)
             resp.raise_for_status()
             data = resp.json()
 

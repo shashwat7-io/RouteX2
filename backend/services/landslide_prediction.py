@@ -31,6 +31,7 @@ class LandslidePredictionService:
         self.terrain = terrain_service
         self.model = None
         self.model_metrics: Dict[str, Any] = {}
+        self._prediction_cache: Dict[str, Dict[str, Any]] = {}
         self._load_model()
 
     def _load_model(self):
@@ -57,7 +58,12 @@ class LandslidePredictionService:
         """
         Executes multi-source landslide hazard inference for a geographical coordinate.
         Combines GSI NLSM, NASA GPM rainfall, SRTM DEM terrain, and XGBoost/GBDT model.
+        Features sub-millisecond in-memory spatial caching.
         """
+        cache_key = f"{round(lat, 3)}_{round(lon, 3)}_{override_slope}_{override_r24}_{override_soil}"
+        if cache_key in self._prediction_cache:
+            return self._prediction_cache[cache_key]
+
         # 1. Fetch live terrain
         terrain_prof = self.terrain.get_terrain_profile(lat, lon)
         slope = override_slope if override_slope is not None else terrain_prof["slope_angle_deg"]
@@ -147,7 +153,7 @@ class LandslidePredictionService:
         # Factor of Safety proxy (FoS = 1.0 indicates limit equilibrium failure)
         fos = round(max(0.65, min(2.4, 1.28 / (hazard_score + 0.35))), 2)
 
-        return {
+        result = {
             "latitude": lat,
             "longitude": lon,
             "hazard_score": hazard_score,
@@ -184,6 +190,12 @@ class LandslidePredictionService:
             "model_accuracy": self.model_metrics.get("performance", {}).get("accuracy", 0.957),
             "uncertainty_pct": round(max(3.0, (1.0 - abs(hazard_score - 0.5) * 2) * 12.0), 1)
         }
+
+        # Keep prediction cache bounded to 1500 items to conserve memory
+        if len(self._prediction_cache) > 1500:
+            self._prediction_cache.clear()
+        self._prediction_cache[cache_key] = result
+        return result
 
     def _geotechnical_fallback_score(self, slope: float, r24: float, r3d: float,
                                     soil_sat: float, gsi_weight: float) -> float:

@@ -5,11 +5,12 @@ import time
 import requests
 import math
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 
 from lhi_engine import LHIEngine
@@ -38,6 +39,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# GZip compression for API responses & static assets over 1000 bytes
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Initialize Core Engines
 lhi_engine = LHIEngine()
@@ -53,8 +56,10 @@ prediction_service = LandslidePredictionService(gsi_service, gpm_service, terrai
 route_risk_service = RouteRiskAssessmentService(gsi_service, gpm_service, prediction_service)
 
 
-# In-memory geocode cache to reduce redundant lookups
+# In-memory caches to reduce redundant computation
 GEOCODE_CACHE: Dict[str, Any] = {}
+ROUTE_CACHE: Dict[str, Tuple[float, Any]] = {}
+ROUTE_CACHE_TTL: float = 900.0  # 15 minutes
 
 # Pydantic Schemas
 class HazardPointInput(BaseModel):
@@ -542,6 +547,14 @@ def compute_route(req: RouteRequest):
     and if blocked (LHI > 0.75), requests safe alternate route avoiding landslide geofences.
     Includes turn-by-turn steps, safety classification, and detour rationale.
     """
+    haz_sig = "_".join(f"{round(p.latitude, 3)},{round(p.longitude, 3)}" for p in (req.hazard_points or []))
+    cache_key = f"{round(req.start[0], 4)}_{round(req.start[1], 4)}->{round(req.end[0], 4)}_{round(req.end[1], 4)}:{req.include_steps}:{haz_sig}"
+    now_t = time.time()
+    if cache_key in ROUTE_CACHE:
+        c_time, c_data = ROUTE_CACHE[cache_key]
+        if now_t - c_time < ROUTE_CACHE_TTL:
+            return c_data
+
     if req.ors_api_key:
         router_engine.ors_api_key = req.ors_api_key
 
@@ -693,7 +706,7 @@ def compute_route(req: RouteRequest):
                 "color": "#3b82f6" if idx == 0 else "#f59e0b"
             })
 
-    return {
+    result = {
         "is_rerouted": is_rerouted,
         "hazard_detected": intersection_res["intersects"],
         "intersecting_geofence_count": intersection_res.get("intersecting_count", 0),
@@ -712,6 +725,11 @@ def compute_route(req: RouteRequest):
         "route_options": route_options,
         "selected_route_id": route_options[0]["id"] if route_options else "route_recommended"
     }
+    if len(ROUTE_CACHE) > 100:
+        oldest_k = next(iter(ROUTE_CACHE))
+        ROUTE_CACHE.pop(oldest_k, None)
+    ROUTE_CACHE[cache_key] = (now_t, result)
+    return result
 
 
 class RecalculateRouteRequest(BaseModel):
