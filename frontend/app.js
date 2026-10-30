@@ -71,14 +71,21 @@ document.addEventListener('DOMContentLoaded', () => {
   let safeRouteLayer = null;
   let geofenceLayersGroup = L.layerGroup();
   let hazardMarkersGroup = L.layerGroup();
-  let routeMarkersGroup = L.layerGroup();
   let preventionLayersGroup = L.layerGroup();
+  let gsiInventoryLayerGroup = L.layerGroup();
+  let gsiZonesLayerGroup = L.layerGroup();
+  let nasaGpmLayerGroup = L.layerGroup();
+  let routeRiskSegmentsGroup = L.layerGroup();
   let heatmapLayer = null;
 
   // Prevention and Slope Stabilization State
   let currentPreventionAssets = [];
   let preventionMarkersMap = {};
   let isMitigationSimulated = false;
+
+  // GSI and NASA GPM State
+  let currentGSIRecords = [];
+  let currentGSIZonesGeoJSON = null;
 
   // Live Navigation State
   let userGpsMarker = null;
@@ -263,6 +270,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const chkHeatmap = document.getElementById('chk-heatmap');
   const chkPrevention = document.getElementById('chk-prevention');
   const chkSimulateMitigation = document.getElementById('chk-simulate-mitigation');
+  const chkGsiInventory = document.getElementById('chk-gsi-inventory');
+  const chkGsiZones = document.getElementById('chk-gsi-zones');
+  const chkNasaGpm = document.getElementById('chk-nasa-gpm');
   const preventionStatusBadge = document.getElementById('prevention-status-badge');
   const prevFosVal = document.getElementById('prev-fos-val');
   const prevReductionVal = document.getElementById('prev-reduction-val');
@@ -270,6 +280,31 @@ document.addEventListener('DOMContentLoaded', () => {
   const preventionAssetsScroll = document.getElementById('prevention-assets-scroll');
   const prevAssetCount = document.getElementById('prev-asset-count');
   const mitigationBox = document.querySelector('.mitigation-simulator-box');
+
+  // Route Segment Risk Elements
+  const routeRiskCard = document.getElementById('route-segmented-risk-card');
+  const routeRiskBadge = document.getElementById('route-risk-badge');
+  const routeHazardScoreVal = document.getElementById('route-hazard-score-val');
+  const routeGsiZonesVal = document.getElementById('route-gsi-zones-val');
+  const routeGsiSlidesVal = document.getElementById('route-gsi-slides-val');
+  const routeRainPeakVal = document.getElementById('route-rain-peak-val');
+  const routeSegmentsVisualBar = document.getElementById('route-segments-visual-bar');
+  const segmentBarBreakdown = document.getElementById('segment-bar-breakdown');
+  const routeRiskAlertsContainer = document.getElementById('route-risk-alerts-container');
+
+  // AI Inspector Elements
+  const inpInspLat = document.getElementById('inp-insp-lat');
+  const inpInspLon = document.getElementById('inp-insp-lon');
+  const btnRunAiEval = document.getElementById('btn-run-ai-eval');
+  const btnUseCurrPoint = document.getElementById('btn-use-curr-point');
+  const aiInspResults = document.getElementById('ai-insp-results');
+  const inspCatPill = document.getElementById('insp-cat-pill');
+  const inspScoreText = document.getElementById('insp-score-text');
+  const inspSlopeVal = document.getElementById('insp-slope-val');
+  const inspR24Val = document.getElementById('insp-r24-val');
+  const inspGsiVal = document.getElementById('insp-gsi-val');
+  const inspSoilVal = document.getElementById('insp-soil-val');
+  const inspAdvisoryText = document.getElementById('insp-advisory-text');
 
   // =========================================================================
   // INITIALIZE LEAFLET MAP
@@ -296,6 +331,14 @@ document.addEventListener('DOMContentLoaded', () => {
     hazardMarkersGroup.addTo(map);
     routeMarkersGroup.addTo(map);
     preventionLayersGroup.addTo(map);
+    gsiZonesLayerGroup.addTo(map);
+    gsiInventoryLayerGroup.addTo(map);
+    nasaGpmLayerGroup.addTo(map);
+    routeRiskSegmentsGroup.addTo(map);
+
+    // Initial GSI background load
+    fetchAndRenderGSIZones();
+    fetchAndRenderGSIInventory();
 
     setTimeout(() => {
       if (map) map.invalidateSize();
@@ -841,6 +884,13 @@ document.addEventListener('DOMContentLoaded', () => {
       fetchAndRenderPreventionAssets(activeRegionKey, activeRouteCoordinates);
     }
 
+    // 6. Render Segmented Route Hazard Assessment (GSI + NASA GPM + DEM XGBoost)
+    if (routeData.route_risk_assessment) {
+      renderSegmentedRouteRisk(routeData.route_risk_assessment);
+    } else if (activeRouteCoordinates && activeRouteCoordinates.length > 0) {
+      fetchSegmentedRouteRisk(activeRouteCoordinates);
+    }
+
     // Smooth scroll to route card
     routeInfoCard.classList.remove('hidden');
     routeInfoCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -934,6 +984,7 @@ document.addEventListener('DOMContentLoaded', () => {
     routeInfoCard.classList.add('hidden');
     activeNavPanel.classList.add('hidden');
     navFloatingHud.classList.add('hidden');
+    if (routeRiskCard) routeRiskCard.classList.add('hidden');
     clearMapLayers();
     activeNavigationRoute = null;
     activeRouteCoordinates = [];
@@ -1469,6 +1520,7 @@ document.addEventListener('DOMContentLoaded', () => {
     geofenceLayersGroup.clearLayers();
     hazardMarkersGroup.clearLayers();
     routeMarkersGroup.clearLayers();
+    routeRiskSegmentsGroup.clearLayers();
     if (heatmapLayer) map.removeLayer(heatmapLayer);
   }
 
@@ -2109,6 +2161,483 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     refreshIcons();
+  }
+
+  // =========================================================================
+  // GSI (GEOLOGICAL SURVEY OF INDIA) & NASA GPM SATELLITE LAYERS
+  // =========================================================================
+  async function fetchAndRenderGSIInventory() {
+    try {
+      const resp = await fetch('/api/gsi/records');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      currentGSIRecords = data.records || [];
+
+      gsiInventoryLayerGroup.clearLayers();
+
+      currentGSIRecords.forEach(record => {
+        const pinIcon = L.divIcon({
+          className: 'custom-gsi-marker',
+          html: `<div class="gsi-slide-pin" title="${escapeHtml(record.name)}"><span class="gsi-pin-inner">⚠️</span></div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        });
+
+        const popupHtml = `
+          <div class="gsi-popup-card">
+            <div class="gsi-popup-header">
+              <span class="gsi-id-chip">${escapeHtml(record.gsi_id)}</span>
+              <span class="gsi-conf-chip">${escapeHtml(record.confidence || 'GSI High')}</span>
+            </div>
+            <h4 class="gsi-popup-title">${escapeHtml(record.name)}</h4>
+            <div class="gsi-popup-meta">
+              <span>📍 ${escapeHtml(record.district)}, ${escapeHtml(record.state)}</span>
+              <span>🛣️ ${escapeHtml(record.highway || 'Corridor')}</span>
+            </div>
+            <div class="gsi-popup-grid">
+              <div class="gsi-grid-cell">
+                <span class="gsi-cell-k">Event Date:</span>
+                <span class="gsi-cell-v">${escapeHtml(record.occurrence_date)}</span>
+              </div>
+              <div class="gsi-grid-cell">
+                <span class="gsi-cell-k">Slide Type:</span>
+                <span class="gsi-cell-v">${escapeHtml(record.slide_type)}</span>
+              </div>
+              <div class="gsi-grid-cell">
+                <span class="gsi-cell-k">Trigger:</span>
+                <span class="gsi-cell-v">${escapeHtml(record.trigger_mechanism)}</span>
+              </div>
+              <div class="gsi-grid-cell">
+                <span class="gsi-cell-k">Lithology:</span>
+                <span class="gsi-cell-v">${escapeHtml(record.lithology)}</span>
+              </div>
+            </div>
+            ${record.description ? `<p class="gsi-popup-desc">${escapeHtml(record.description)}</p>` : ''}
+            <div class="gsi-popup-footer">
+              <span>Source: ${escapeHtml(record.source)}</span>
+              <a href="https://bhukosh.gsi.gov.in/Bhukosh/Public" target="_blank" rel="noopener">GSI Bhukosh ↗</a>
+            </div>
+          </div>
+        `;
+
+        L.marker([record.latitude, record.longitude], { icon: pinIcon })
+          .addTo(gsiInventoryLayerGroup)
+          .bindPopup(popupHtml, { maxWidth: 300 });
+      });
+    } catch (e) {
+      console.warn("Could not load GSI inventory:", e);
+    }
+  }
+
+  async function fetchAndRenderGSIZones() {
+    try {
+      const resp = await fetch('/api/gsi/susceptibility-zones');
+      if (!resp.ok) return;
+      const geojson = await resp.json();
+      currentGSIZonesGeoJSON = geojson;
+
+      gsiZonesLayerGroup.clearLayers();
+
+      L.geoJSON(geojson, {
+        style: function (feature) {
+          const p = feature.properties || {};
+          const c = p.color || '#f59e0b';
+          return {
+            color: c,
+            fillColor: c,
+            weight: 2,
+            opacity: 0.85,
+            fillOpacity: 0.22,
+            dashArray: '5, 5'
+          };
+        },
+        onEachFeature: function (feature, layer) {
+          const p = feature.properties || {};
+          const popupContent = `
+            <div class="gsi-popup-card">
+              <div class="gsi-popup-header">
+                <span class="gsi-id-chip">${escapeHtml(p.id || 'ZONE')}</span>
+                <span class="gsi-conf-chip" style="background:${p.color || '#f59e0b'}22; color:${p.color || '#f59e0b'}">${escapeHtml(p.susceptibility_class)}</span>
+              </div>
+              <h4 class="gsi-popup-title">${escapeHtml(p.name)}</h4>
+              <div class="gsi-popup-meta">
+                <span>📍 GSI NLSM Macro-Zonation</span>
+                <span>Dominant Slope: <b>${escapeHtml(p.dominant_slope || '30-45°')}</b></span>
+              </div>
+              <div class="gsi-popup-grid">
+                <div class="gsi-grid-cell">
+                  <span class="gsi-cell-k">Zone Class:</span>
+                  <span class="gsi-cell-v">${escapeHtml(p.susceptibility_class)}</span>
+                </div>
+                <div class="gsi-grid-cell">
+                  <span class="gsi-cell-k">Risk Weight:</span>
+                  <span class="gsi-cell-v">${p.risk_weight || 0.8}x multiplier</span>
+                </div>
+                <div class="gsi-grid-cell" style="grid-column: span 2;">
+                  <span class="gsi-cell-k">Dominant Lithology:</span>
+                  <span class="gsi-cell-v">${escapeHtml(p.lithology || 'Metasedimentary / Schist')}</span>
+                </div>
+              </div>
+              <p class="gsi-popup-desc">${escapeHtml(p.advisory || 'Exercise caution during active rainfall.')}</p>
+              <div class="gsi-popup-footer">
+                <span>Ref: Geological Survey of India NLSM</span>
+              </div>
+            </div>
+          `;
+          layer.bindPopup(popupContent, { maxWidth: 310 });
+
+          layer.on({
+            mouseover: function (e) {
+              const l = e.target;
+              l.setStyle({ fillOpacity: 0.40, weight: 3 });
+            },
+            mouseout: function (e) {
+              const l = e.target;
+              l.setStyle({ fillOpacity: 0.22, weight: 2 });
+            }
+          });
+        }
+      }).addTo(gsiZonesLayerGroup);
+    } catch (e) {
+      console.warn("Could not load GSI zones:", e);
+    }
+  }
+
+  async function fetchAndRenderNasaGpmRainfall() {
+    try {
+      nasaGpmLayerGroup.clearLayers();
+      const bounds = map.getBounds();
+      const minLat = bounds.getSouth();
+      const maxLat = bounds.getNorth();
+      const minLon = bounds.getWest();
+      const maxLon = bounds.getEast();
+
+      const resp = await fetch(`/api/rainfall/region?min_lat=${minLat.toFixed(3)}&max_lat=${maxLat.toFixed(3)}&min_lon=${minLon.toFixed(3)}&max_lon=${maxLon.toFixed(3)}`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+
+      (data.points || []).forEach(pt => {
+        const rain24 = pt.rainfall_24h_mm || 0;
+        let color = '#06b6d4';
+        let radius = 6000;
+        if (rain24 >= 40) { color = '#ef4444'; radius = 10000; }
+        else if (rain24 >= 20) { color = '#f97316'; radius = 8000; }
+        else if (rain24 >= 10) { color = '#f59e0b'; radius = 7000; }
+
+        const circle = L.circle([pt.latitude, pt.longitude], {
+          radius: radius,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.18,
+          weight: 1.5,
+          dashArray: '3, 3'
+        }).addTo(nasaGpmLayerGroup);
+
+        circle.bindPopup(`
+          <div class="gsi-popup-card">
+            <div class="gsi-popup-header">
+              <span class="gsi-id-chip">NASA GPM IMERG</span>
+              <span class="gsi-conf-chip" style="background:${color}22; color:${color}">${rain24.toFixed(1)} mm/24h</span>
+            </div>
+            <h4 class="gsi-popup-title">Satellite Precipitation Observation</h4>
+            <div class="gsi-popup-grid">
+              <div class="gsi-grid-cell">
+                <span class="gsi-cell-k">Precip Rate:</span>
+                <span class="gsi-cell-v">${(pt.current_rate_mm_h || 0).toFixed(1)} mm/h</span>
+              </div>
+              <div class="gsi-grid-cell">
+                <span class="gsi-cell-k">24h Total:</span>
+                <span class="gsi-cell-v">${rain24.toFixed(1)} mm</span>
+              </div>
+            </div>
+            <div class="gsi-popup-footer">
+              <span>Lat: ${pt.latitude.toFixed(3)}°, Lon: ${pt.longitude.toFixed(3)}°</span>
+            </div>
+          </div>
+        `, { maxWidth: 260 });
+      });
+    } catch (e) {
+      console.warn("Could not load NASA GPM data:", e);
+    }
+  }
+
+  // =========================================================================
+  // CORRIDOR HAZARD SEGMENTATION RENDERER
+  // =========================================================================
+  function renderSegmentedRouteRisk(risk) {
+    if (!risk) return;
+    if (routeRiskCard) routeRiskCard.classList.remove('hidden');
+
+    // Hazard score & safety status
+    if (routeHazardScoreVal) {
+      routeHazardScoreVal.textContent = (risk.route_hazard_index || 0).toFixed(2);
+    }
+
+    if (routeRiskBadge) {
+      const status = risk.route_safety_status || "LOWER_ESTIMATED_HAZARD";
+      if (status === "CRITICAL_HAZARD_BLOCKED") {
+        routeRiskBadge.textContent = "CRITICAL HAZARD";
+        routeRiskBadge.style.background = "rgba(239,68,68,0.2)";
+        routeRiskBadge.style.color = "#ef4444";
+      } else if (status === "ELEVATED_RISK_CAUTION") {
+        routeRiskBadge.textContent = "ELEVATED RISK";
+        routeRiskBadge.style.background = "rgba(249,115,22,0.2)";
+        routeRiskBadge.style.color = "#f97316";
+      } else if (status === "MODERATE_MONITORED") {
+        routeRiskBadge.textContent = "MODERATE";
+        routeRiskBadge.style.background = "rgba(245,158,11,0.2)";
+        routeRiskBadge.style.color = "#f59e0b";
+      } else {
+        routeRiskBadge.textContent = "LOWER RISK";
+        routeRiskBadge.style.background = "rgba(16,185,129,0.2)";
+        routeRiskBadge.style.color = "#10b981";
+      }
+    }
+
+    // GSI zones overlap
+    if (routeGsiZonesVal) {
+      const zones = risk.intersecting_susceptibility_zones || [];
+      if (zones.length > 0) {
+        routeGsiZonesVal.textContent = `${zones.length} Zones Traversed`;
+      } else {
+        routeGsiZonesVal.textContent = "No Major Overlap";
+      }
+    }
+
+    // GSI historical slides
+    if (routeGsiSlidesVal) {
+      const slides = risk.gsi_records_near_route || [];
+      routeGsiSlidesVal.textContent = `${slides.length} Within 4km`;
+    }
+
+    // Peak rain
+    if (routeRainPeakVal) {
+      const segments = risk.segments || [];
+      const peak = Math.max(...segments.map(s => s.rainfall_24h_mm || 0), 0);
+      routeRainPeakVal.textContent = `${peak.toFixed(1)} mm/24h`;
+    }
+
+    // Segments visual bar
+    if (routeSegmentsVisualBar) {
+      routeSegmentsVisualBar.innerHTML = '';
+      const segments = risk.segments || [];
+
+      if (segmentBarBreakdown) {
+        segmentBarBreakdown.textContent = `${risk.total_segments || segments.length} Segments (${risk.critical_segment_count || 0} Critical)`;
+      }
+
+      routeRiskSegmentsGroup.clearLayers();
+
+      segments.forEach((seg, idx) => {
+        const segEl = document.createElement('div');
+        segEl.className = 'segment-bar-block';
+        segEl.style.background = seg.color || '#10b981';
+        segEl.style.flex = '1';
+        segEl.style.height = '12px';
+        segEl.style.borderRadius = '2px';
+        segEl.style.cursor = 'pointer';
+        segEl.title = `Seg ${seg.segment_id}: ${seg.hazard_category} (${(seg.hazard_score * 100).toFixed(0)}%) | Slope: ${seg.slope_deg}° | Rain: ${seg.rainfall_24h_mm}mm`;
+
+        segEl.addEventListener('click', () => {
+          if (seg.start_coord) {
+            map.flyTo([seg.start_coord[1], seg.start_coord[0]], 13, { duration: 0.8 });
+          }
+        });
+
+        routeSegmentsVisualBar.appendChild(segEl);
+
+        // Draw colored segment on map
+        if (seg.start_coord && seg.end_coord) {
+          const segLine = L.polyline([
+            [seg.start_coord[1], seg.start_coord[0]],
+            [seg.end_coord[1], seg.end_coord[0]]
+          ], {
+            color: seg.color || '#10b981',
+            weight: 7,
+            opacity: 0.85
+          }).addTo(routeRiskSegmentsGroup);
+
+          segLine.bindPopup(`
+            <div style="font-family:inherit; font-size:12px; color:#f1f5f9; min-width:180px;">
+              <b style="color:${seg.color || '#10b981'};">Route Segment ${seg.segment_id}</b><br>
+              Hazard Category: <b>${seg.hazard_category}</b><br>
+              Hazard Score: <b>${(seg.hazard_score * 100).toFixed(1)}%</b><br>
+              Slope Angle: <b>${seg.slope_deg}°</b> | Elevation: <b>${seg.elevation_m}m</b><br>
+              NASA Rain (24h): <b>${seg.rainfall_24h_mm} mm</b><br>
+              GSI Susceptibility: <b>${seg.gsi_susceptibility_class}</b><br>
+              <i style="color:#94a3b8; font-size:11px;">${seg.advisory || ''}</i>
+            </div>
+          `);
+        }
+      });
+    }
+
+    // Alerts container
+    if (routeRiskAlertsContainer) {
+      routeRiskAlertsContainer.innerHTML = '';
+      const alerts = risk.alerts || [];
+      if (alerts.length === 0) {
+        routeRiskAlertsContainer.innerHTML = `
+          <div class="risk-alert-item low">
+            <span>🛡️ No critical hazard zones flagged along this planned route corridor.</span>
+          </div>
+        `;
+      } else {
+        alerts.forEach(a => {
+          const aEl = document.createElement('div');
+          const sevClass = a.severity === 'CRITICAL' ? 'critical' : (a.severity === 'HIGH' ? 'high' : 'medium');
+          aEl.className = `risk-alert-item ${sevClass}`;
+          aEl.innerHTML = `
+            <div style="display:flex; align-items:flex-start; gap:8px;">
+              <span style="font-size:13px; line-height:1.3;">⚠️</span>
+              <span style="font-size:12px; line-height:1.4; color:#f8fafc;">${escapeHtml(a.message)}</span>
+            </div>
+          `;
+          routeRiskAlertsContainer.appendChild(aEl);
+        });
+      }
+    }
+
+    refreshIcons();
+  }
+
+  async function fetchSegmentedRouteRisk(coords) {
+    try {
+      const resp = await fetch('/api/route/segmented-risk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinates: coords })
+      });
+      if (resp.ok) {
+        const risk = await resp.json();
+        renderSegmentedRouteRisk(risk);
+      }
+    } catch (e) {
+      console.warn("Could not calculate segmented route risk:", e);
+    }
+  }
+
+  // =========================================================================
+  // AI MULTI-FACTOR SLOPE INSPECTOR
+  // =========================================================================
+  if (btnRunAiEval) {
+    btnRunAiEval.addEventListener('click', async () => {
+      const lat = parseFloat(inpInspLat.value);
+      const lon = parseFloat(inpInspLon.value);
+
+      if (isNaN(lat) || isNaN(lon)) {
+        alert("Please provide valid latitude and longitude coordinates.");
+        return;
+      }
+
+      btnRunAiEval.disabled = true;
+      btnRunAiEval.innerHTML = `<span>Computing Multi-Factor Inference...</span>`;
+
+      try {
+        const resp = await fetch('/api/prediction/landslide', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latitude: lat, longitude: lon })
+        });
+
+        if (!resp.ok) throw new Error("Inference failed");
+        const res = await resp.json();
+
+        if (aiInspResults) aiInspResults.classList.remove('hidden');
+
+        if (inspCatPill) {
+          inspCatPill.textContent = res.hazard_category || "UNKNOWN";
+          inspCatPill.className = `badge-status-pill ${(res.hazard_category || 'low').toLowerCase()}`;
+        }
+
+        if (inspScoreText) {
+          inspScoreText.textContent = `Hazard Score: ${res.hazard_score.toFixed(2)} • FoS: ${res.factor_of_safety ? res.factor_of_safety.toFixed(2) : '1.15'}`;
+        }
+
+        if (inspSlopeVal && res.input_features) {
+          inspSlopeVal.textContent = `${res.input_features.slope_angle_deg.toFixed(1)}° (${res.input_features.elevation_m}m)`;
+        }
+
+        if (inspR24Val && res.input_features) {
+          inspR24Val.textContent = `${res.input_features.rainfall_24h_mm.toFixed(1)} mm`;
+        }
+
+        if (inspGsiVal && res.input_features) {
+          inspGsiVal.textContent = res.input_features.gsi_susceptibility_class || "Low";
+        }
+
+        if (inspSoilVal && res.input_features) {
+          inspSoilVal.textContent = `${(res.input_features.soil_saturation_pct || 75).toFixed(0)}%`;
+        }
+
+        if (inspAdvisoryText) {
+          inspAdvisoryText.textContent = res.advisory || "Multi-source environmental inference complete.";
+        }
+
+        // Drop a temporary marker on map & pan
+        const marker = L.circleMarker([lat, lon], {
+          radius: 12,
+          color: res.hazard_category === 'VERY_HIGH' ? '#ef4444' : (res.hazard_category === 'HIGH' ? '#f97316' : '#10b981'),
+          fillColor: res.hazard_category === 'VERY_HIGH' ? '#ef4444' : (res.hazard_category === 'HIGH' ? '#f97316' : '#10b981'),
+          fillOpacity: 0.4
+        }).addTo(map);
+
+        marker.bindPopup(`<b>AI Hazard Inspection Point</b><br>Lat: ${lat}, Lon: ${lon}<br>Category: <b>${res.hazard_category}</b> (${res.hazard_score})`).openPopup();
+        map.flyTo([lat, lon], 13, { duration: 1.0 });
+
+      } catch (e) {
+        console.error("AI Evaluation error:", e);
+        alert("Failed to compute AI hazard assessment. Ensure the backend server is running.");
+      } finally {
+        btnRunAiEval.disabled = false;
+        btnRunAiEval.innerHTML = `<i data-lucide="play"></i><span>Evaluate Hazard</span>`;
+        refreshIcons();
+      }
+    });
+  }
+
+  if (btnUseCurrPoint) {
+    btnUseCurrPoint.addEventListener('click', () => {
+      if (userCurrentPosition) {
+        inpInspLat.value = userCurrentPosition[1].toFixed(4);
+        inpInspLon.value = userCurrentPosition[0].toFixed(4);
+      } else if (currentRegionData) {
+        inpInspLat.value = currentRegionData.center[0].toFixed(4);
+        inpInspLon.value = currentRegionData.center[1].toFixed(4);
+      }
+    });
+  }
+
+  // Layer toggle listeners
+  if (chkGsiInventory) {
+    chkGsiInventory.addEventListener('change', () => {
+      if (chkGsiInventory.checked) {
+        if (!map.hasLayer(gsiInventoryLayerGroup)) map.addLayer(gsiInventoryLayerGroup);
+      } else {
+        if (map.hasLayer(gsiInventoryLayerGroup)) map.removeLayer(gsiInventoryLayerGroup);
+      }
+    });
+  }
+
+  if (chkGsiZones) {
+    chkGsiZones.addEventListener('change', () => {
+      if (chkGsiZones.checked) {
+        if (!map.hasLayer(gsiZonesLayerGroup)) map.addLayer(gsiZonesLayerGroup);
+      } else {
+        if (map.hasLayer(gsiZonesLayerGroup)) map.removeLayer(gsiZonesLayerGroup);
+      }
+    });
+  }
+
+  if (chkNasaGpm) {
+    chkNasaGpm.addEventListener('change', () => {
+      if (chkNasaGpm.checked) {
+        if (!map.hasLayer(nasaGpmLayerGroup)) map.addLayer(nasaGpmLayerGroup);
+        fetchAndRenderNasaGpmRainfall();
+      } else {
+        if (map.hasLayer(nasaGpmLayerGroup)) map.removeLayer(nasaGpmLayerGroup);
+      }
+    });
   }
 
   // System Clock

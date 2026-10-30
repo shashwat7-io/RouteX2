@@ -1,6 +1,29 @@
+# Python virtual environments & bytecode
 venv/
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environment files and credentials
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Operating system files
 .DS_Store
+Thumbs.db
+
+# Logs and cache
 *.log
+.cache/
+.pytest_cache/

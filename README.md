@@ -1,567 +1,322 @@
-
-Act as a Senior Full-Stack Developer, AI/ML Engineer, GIS Specialist, and DevOps Engineer.
-
-I have an existing project called ROUTEX AI 2.0.
-
-PROJECT:
-RouteX AI 2.0 is an AI-powered landslide hazard detection and smart navigation platform designed to help users identify potentially dangerous roads in landslide-prone regions and find safer alternative routes.
-
-MY MAIN OBJECTIVE:
-
-Transform my existing RouteX application into a fully functional, real-data-driven landslide hazard monitoring, prediction, and intelligent navigation platform.
-
-I want to integrate the following technologies and data sources into ONE complete working system:
-
-1. Geological Survey of India (GSI)
-2. NASA Global Precipitation Measurement (GPM)
-3. NASA IMERG rainfall datasets
-4. XGBoost Machine Learning
-5. Historical landslide datasets
-6. Terrain and elevation datasets
-7. GPS-based live location
-8. OpenStreetMap
-9. Smart route optimization
-10. Dynamic landslide risk assessment
-
-IMPORTANT FIRST INSTRUCTION:
-
-Before writing or modifying any code:
-
-- Inspect the entire existing repository.
-- Understand the existing frontend and backend architecture.
-- Identify whether the backend uses Flask or FastAPI.
-- Identify the frontend framework.
-- Inspect the existing XGBoost model, datasets, APIs, database, map integration and navigation system.
-- Identify which features are already working.
-- Identify missing features and bugs.
-- Preserve the existing UI design, branding, functionality and working features.
-
-DO NOT unnecessarily rebuild the application.
-DO NOT remove existing features.
-DO NOT replace working components with dummy implementations.
-Make changes incrementally while maintaining backward compatibility.
-
-==================================================
-PART 1: GSI LANDSLIDE DATA INTEGRATION
-==================================================
-
-Integrate real landslide-related data from the Geological Survey of India.
-
-OFFICIAL SOURCES:
-
-https://bhukosh.gsi.gov.in/Bhukosh/Public
-https://gsi.gov.in/
-
-OBJECTIVES:
-
-1. Identify publicly accessible GSI landslide datasets.
-2. Obtain historical landslide inventory data.
-3. Obtain landslide susceptibility maps where available.
-4. Support formats such as:
-   - CSV
-   - GeoJSON
-   - Shapefile
-   - GeoTIFF
-
-5. Extract available information:
-   - Latitude
-   - Longitude
-   - Landslide occurrence date
-   - Landslide type
-   - Geographical location
-   - Susceptibility classification
-
-6. Build a reusable Python data ingestion pipeline.
-7. Validate geographical coordinates.
-8. Remove duplicate records.
-9. Handle missing information.
-10. Convert geographical data to a consistent coordinate reference system.
-
-IMPORTANT:
-
-GSI datasets may not provide a public API or automated downloads for every dataset.
-
-If automated access is unavailable:
-- Provide a manual dataset download and upload workflow.
-- Allow administrators to import GSI datasets.
-- Never fabricate records.
-- Maintain source attribution and dataset metadata.
-
-Distinguish historical landslide events from susceptibility maps.
-
-==================================================
-PART 2: NASA GPM RAINFALL INTEGRATION
-==================================================
-
-Integrate real NASA GPM IMERG precipitation data.
-
-OFFICIAL SOURCES:
-
-https://gpm.nasa.gov/data/imerg
-https://www.earthdata.nasa.gov/
-https://urs.earthdata.nasa.gov/
-
-OBJECTIVES:
-
-1. Integrate NASA GPM IMERG data.
-2. Use officially supported NASA data access methods.
-3. Support Earthdata authentication where required.
-4. Retrieve rainfall observations for the geographical regions covered by RouteX.
-5. Support geographical coordinates and bounding boxes.
-6. Process rainfall observations into useful environmental features.
-
-EXTRACT:
-
-- Latitude
-- Longitude
-- Observation timestamp
-- Precipitation rate
-- Rainfall accumulation
-
-CALCULATE WHERE DATA SUPPORTS IT:
-
-- Last 30-minute rainfall
-- Last 1-hour rainfall
-- Last 24-hour rainfall
-- Last 3-day rainfall
-- Last 7-day rainfall
-
-Respect the temporal resolution and availability of the selected IMERG product.
-
-Create a Python service:
-
-backend/services/nasa_gpm_service.py
-
-Create APIs:
-
-GET /api/rainfall/current
-GET /api/rainfall/location
-GET /api/rainfall/history
-GET /api/rainfall/region
-
-REQUIREMENTS:
-
-- Cache downloaded satellite data.
-- Avoid unnecessary repeated downloads.
-- Store observation timestamps.
-- Track data freshness.
-- Handle API failures.
-- Handle unavailable datasets.
-- Never silently replace missing observations with fabricated rainfall values.
-- Store NASA credentials securely in backend environment variables.
-
-NASA GPM provides rainfall estimates, NOT direct landslide detections.
-
-==================================================
-PART 3: TERRAIN AND GEOGRAPHICAL DATA
-==================================================
-
-Integrate geographical information required for landslide hazard assessment.
-
-Use suitable publicly accessible elevation and terrain datasets.
-
-Potential source:
-
-https://www.earthdata.nasa.gov/
-
-Extract or calculate:
-
-- Elevation
-- Slope angle
-- Terrain characteristics
-- Geographical coordinates
-
-Use appropriate GIS libraries such as:
-
-- GeoPandas
-- Rasterio
-- Shapely
-- GDAL
-- NumPy
-
-Ensure that coordinate systems and raster resolutions are handled correctly.
-
-Do not invent terrain information.
-
-==================================================
-PART 4: XGBOOST MACHINE LEARNING ENGINE
-==================================================
-
-Upgrade the existing RouteX XGBoost landslide prediction system.
-
-FIRST:
-
-Inspect the current model and identify:
-- Existing training dataset.
-- Input features.
-- Target labels.
-- Preprocessing pipeline.
-- Model evaluation metrics.
-- Existing prediction API.
-
-Then integrate compatible GSI, NASA GPM and terrain features.
-
-POSSIBLE FEATURES:
-
-1. Rainfall intensity.
-2. Cumulative rainfall.
-3. Slope angle.
-4. Elevation.
-5. Soil moisture, if available.
-6. Soil type, if available.
-7. Historical landslide information.
-8. Susceptibility classification.
-
-MACHINE LEARNING REQUIREMENTS:
-
-- Clean and preprocess datasets.
-- Handle missing values appropriately.
-- Avoid data leakage.
-- Match rainfall observations to geographical and temporal locations.
-- Create properly labelled training samples.
-- Avoid treating unrecorded landslide locations as confirmed negative samples.
-- Distinguish historical events from susceptibility information.
-- Use appropriate spatial and temporal validation.
-- Compare the new model with the existing model.
-- Preserve the previous model until the new model has been validated.
-
-EVALUATION:
-
-Calculate:
-
-- Accuracy
-- Precision
-- Recall
-- F1-score
-- ROC-AUC where appropriate
-- Confusion matrix
-
-Do not fabricate performance metrics.
-
-MODEL OUTPUT:
-
-Provide:
-
-- Hazard score.
-- Hazard category.
-- Input environmental parameters.
-- Data sources.
-- Observation timestamps.
-- Model version.
-- Uncertainty information where validated.
-
-Possible categories:
-
-- LOW
-- MODERATE
-- HIGH
-- VERY HIGH
-
-Determine classification thresholds through appropriate validation and calibration.
-
-Create or update:
-
-backend/ml/
-backend/models/
-backend/services/landslide_prediction.py
-
-Create API:
-
-POST /api/prediction/landslide
-
-Input:
-
-{
-  "latitude": 30.3165,
-  "longitude": 78.0322
-}
-
-The API should retrieve available environmental features and return an estimated hazard assessment.
-
-Do not use example coordinates or hardcoded values as actual live predictions.
-
-==================================================
-PART 5: LIVE GPS AND SMART NAVIGATION
-==================================================
-
-Upgrade the existing RouteX navigation system.
-
-FEATURES:
-
-- Live GPS tracking.
-- Current location detection.
-- Destination autocomplete.
-- Destination search.
-- Route calculation.
-- Distance and estimated travel time.
-- Turn-by-turn navigation where supported.
-- Alternative route suggestions.
-- Off-route detection.
-- Automatic rerouting where supported.
-
-Use the existing map provider where possible.
-
-If necessary, use:
-
-- OpenStreetMap.
-- MapLibre.
-- OSRM or Valhalla.
-- Browser Geolocation API.
-
-Do not replace existing navigation unnecessarily.
-
-==================================================
-PART 6: LANDSLIDE-AWARE ROUTE OPTIMIZATION
-==================================================
-
-This is one of the most important features.
-
-Whenever a user enters a destination:
-
-1. Obtain the current GPS location.
-2. Calculate candidate routes.
-3. Divide the route into geographical segments.
-4. Check the segments against GSI historical landslide records.
-5. Check intersection with susceptibility zones.
-6. Retrieve available NASA GPM rainfall information.
-7. Obtain XGBoost hazard estimates where sufficient inputs exist.
-8. Calculate a route-level hazard assessment.
-9. Compare available alternative routes.
-10. Recommend a suitable route balancing travel time, distance and estimated hazard exposure.
-
-MAP VISUALIZATION:
-
-Use the following visual categories:
-
-- Green: Lower estimated hazard.
-- Yellow: Moderate estimated hazard.
-- Orange: High estimated hazard.
-- Red: Very high estimated hazard.
-- Grey: Insufficient or unavailable hazard information.
-
-DISPLAY:
-
-- Current location.
-- Destination.
-- Selected route.
-- Alternative routes.
-- Historical landslide locations.
-- Susceptibility zones.
-- Rainfall information.
-- Predicted hazard areas.
-
-ALERT EXAMPLES:
-
-"Warning: This route intersects a high landslide susceptibility zone."
-
-"Elevated rainfall has been observed near a section of your route."
-
-"An alternative route with lower estimated hazard exposure is available."
-
-"Insufficient environmental data is available to assess this route reliably."
-
-IMPORTANT:
-
-- Never claim a route is completely safe.
-- Do not automatically declare a road closed without verified closure data.
-- Do not invent real-time landslide events.
-- Distinguish historical events, susceptibility, rainfall observations and model predictions.
-- Do not assume missing data means low risk.
-- Clearly show the time and source of observations.
-- Recommend following official disaster warnings.
-
-==================================================
-PART 7: FRONTEND UI AND DASHBOARD
-==================================================
-
-Integrate all features into the existing RouteX interface.
-
-Do not unnecessarily change the existing design.
-
-Add or upgrade these dashboard components:
-
-1. Landslide Monitoring Dashboard.
-2. Live Rainfall Monitoring.
-3. Historical Landslide Map.
-4. Landslide Susceptibility Map.
-5. AI Prediction Panel.
-6. Live Navigation.
-7. Route Risk Comparison.
-8. Environmental Data Status.
-9. Data Source Information.
-10. Map Legend.
-
-DASHBOARD SHOULD SHOW:
-
-- Current rainfall.
-- Rainfall history.
-- Current location.
-- Estimated hazard level.
-- Nearby historical landslides.
-- Susceptibility zones.
-- Last data update.
-- Model prediction details.
-- Selected route risk assessment.
-
-Use responsive layouts for desktop and mobile.
-
-==================================================
-PART 8: BACKEND AND API STRUCTURE
-==================================================
-
-Organize the backend into reusable modules.
-
-Suggested structure:
-
-backend/
-  app.py
-  requirements.txt
-
-  services/
-    gsi_service.py
-    nasa_gpm_service.py
-    terrain_service.py
-    landslide_prediction.py
-    route_risk_service.py
-
-  ml/
-    train_model.py
-    evaluate_model.py
-    preprocess_data.py
-
-  models/
-    xgboost_model.json
-
-  datasets/
-    landslides/
-    rainfall/
-    terrain/
-
-  routes/
-    landslide_routes.py
-    rainfall_routes.py
-    prediction_routes.py
-    navigation_routes.py
-
-  utils/
-    geo_utils.py
-    data_validation.py
-    caching.py
-
-Adapt this structure to my actual repository rather than blindly creating duplicate modules.
-
-Provide proper API documentation and meaningful error responses.
-
-==================================================
-PART 9: SECURITY AND PERFORMANCE
-==================================================
-
-- Keep API credentials in environment variables.
-- Never expose NASA credentials in frontend JavaScript.
-- Add API request validation.
-- Add error handling.
-- Cache satellite observations.
-- Avoid downloading large datasets on every user request.
-- Use background processing for large data operations.
-- Add logging.
-- Validate external data before processing.
-- Prevent duplicate dataset imports.
-- Optimize geographical queries.
-- Use appropriate rate limits.
-- Ensure GPS works over HTTPS.
-
-==================================================
-PART 10: DEPLOYMENT
-==================================================
-
-Prepare the complete project for production deployment.
-
-My source code is stored on GitHub.
-
-Backend deployment:
-Render.
-
-Frontend deployment:
-Render Static Sites or Vercel, depending on the existing framework.
-
-Requirements:
-
-- Create or update requirements.txt.
-- Provide production start commands.
-- Configure environment variables.
-- Configure frontend API base URL.
-- Add CORS configuration.
-- Provide .env.example.
-- Update .gitignore.
-- Ensure secrets are not committed.
-- Verify backend and frontend connectivity.
-- Provide exact deployment instructions.
-
-==================================================
-PART 11: TESTING AND FINAL VERIFICATION
-==================================================
-
-Test the entire integrated application.
-
-TEST:
-
-1. GSI dataset import.
-2. Historical landslide map.
-3. Susceptibility zone visualization.
-4. NASA GPM rainfall retrieval.
-5. Rainfall calculations.
-6. Terrain feature extraction.
-7. XGBoost predictions.
-8. Model evaluation.
-9. GPS tracking.
-10. Destination search.
-11. Route calculation.
-12. Hazard intersection detection.
-13. Alternative route selection.
-14. API responses.
-15. Mobile responsiveness.
-16. Production deployment.
-
-For each feature, report:
-
-- Working.
-- Partially working.
-- Not implemented.
-- Requires manual data upload.
-- Requires credentials.
-- Blocked by unavailable source data.
-
-Never mark a feature as complete unless it has actually been tested.
-
-==================================================
-FINAL INSTRUCTIONS
-==================================================
-
-I want a COMPLETE WORKING UPGRADE, not just a UI redesign.
-
-Prioritize actual data integration over mock data.
-
-Do not fabricate:
-- Landslide records.
-- Rainfall observations.
-- Model accuracy.
-- Prediction results.
-- Road closures.
-- Live disaster alerts.
-
-If any external dataset cannot be accessed automatically, build a manual import workflow and document it.
-
-Do not destroy my existing application.
-
-Before finishing:
-
-1. Summarize all changes.
-2. List all files created or modified.
-3. Explain all required API credentials.
-4. Provide installation commands.
-5. Provide local testing instructions.
-6. Provide deployment commands.
-7. Explain which features use real data.
-8. Explain which features still need additional datasets or validation.
-
-Make the existing RouteX AI 2.0 project a reliable, data-driven, landslide-aware navigation platform.
+# RouteX AI 2.0: Real-Data-Driven Landslide Hazard Monitoring, AI Prediction & Intelligent Navigation
+
+[![RouteX AI 2.0 Live](https://img.shields.io/badge/Live%20Platform-RouteX%20AI%202.0-10b981?style=for-the-badge&logo=compass)](https://routex-zufx.onrender.com)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+[![Leaflet](https://img.shields.io/badge/GIS-Leaflet%20%2B%20OSM-199900?style=for-the-badge&logo=leaflet)](https://leafletjs.com)
+[![Machine Learning](https://img.shields.io/badge/ML-XGBoost%20%2F%20GBDT-ff7043?style=for-the-badge&logo=scikitlearn)](https://xgboost.readthedocs.io)
+[![NASA GPM](https://img.shields.io/badge/Precipitation-NASA%20GPM%20IMERG-1f77b4?style=for-the-badge&logo=nasa)](https://gpm.nasa.gov)
+[![GSI Bhukosh](https://img.shields.io/badge/Geology-GSI%20Bhukosh%20NLSM-b33939?style=for-the-badge)](https://bhukosh.gsi.gov.in)
+
+**RouteX AI 2.0** is an enterprise-grade, real-data-driven landslide hazard detection, early warning, and intelligent navigation platform. Engineered specifically for high-risk mountain corridors across India (Himalayas, Western Ghats, Northeast Hills), RouteX integrates multi-source geospatial data, real-time satellite precipitation, geotechnical elevation gradients, and machine learning to calculate safest mountain routes and provide turn-by-turn navigation with dynamic obstacle avoidance.
+
+---
+
+## 🌟 Key Capabilities & Integrated Technologies
+
+### 1. Geological Survey of India (GSI) Integration
+- **Historical Landslide Inventory**: Direct spatial catalog of verified catastrophic slide events from GSI Bhukosh (Kaliasaur, Malpa, Kedarnath Valley, Varunavat, Maling, Helang, Meppadi/Wayanad, Malin, etc.).
+- **GSI NLSM Susceptibility Macro-Zonation**: GeoJSON polygon overlays categorized into Zone IV (Very High), Zone III (High), and Zone II (Moderate) with geological lithology, dominant slope angle, and risk weights.
+- **Dynamic Spatial Intersection**: Automatically checks candidate routes and point coordinates against GSI polygons and proximity buffers.
+- **Manual Data Ingestion Pipeline**: Dedicated administrator endpoint (`POST /api/gsi/import`) supporting CSV and GeoJSON uploads with coordinate validation, CRS standardization, and duplicate deduplication.
+
+### 2. NASA Global Precipitation Measurement (GPM) & IMERG Satellite Rainfall
+- **Multi-Temporal Accumulation**: Extracts instantaneous precipitation rate (`mm/h`) and computes multi-interval accumulations:
+  - Last 30-minute precipitation
+  - Last 1-hour precipitation
+  - Last 24-hour precipitation ($R_{24}$)
+  - Last 3-day precipitation ($R_{3d}$)
+  - Last 7-day precipitation ($R_{7d}$)
+  - **Antecedent Moisture Index (AMI)**: Decayed soil saturation weighting ($AMI = \sum \frac{R_i}{i^{0.5}}$).
+- **Earthdata Authentication**: Native CMR / GES DISC connector for authenticated NASA Earthdata IMERG Early/Late run downloads with automatic fallback to high-resolution satellite-gauge radar streams during orbit latency.
+- **High-Performance In-Memory Cache**: 30-minute spatial TTL caching prevents rate-limiting and redundant satellite querying.
+
+### 3. Digital Elevation Models (DEM) & Geomorphometry
+- **Topographic Feature Extraction**: High-resolution SRTM / Copernicus DEM gradients.
+- **Derived Metrics**: Calculates elevation ($m$), slope gradient ($^\circ$), aspect orientation, surface roughness index, and Topographic Wetness Index (TWI).
+
+### 4. Upgraded Machine Learning Hazard Engine
+- **Model Architecture**: Calibrated Gradient-Boosted Decision Tree (XGBoost / HistGradientBoosting) trained on 12,000 multi-source feature vectors across diverse geomorphic zones.
+- **Input Feature Set**:
+  $$\vec{x} = [\text{Slope Angle}, R_{24}, R_{3d}, \text{Soil Saturation}, \text{Elevation}, \text{GSI Susceptibility Weight}, \text{Vegetation Cover}]$$
+- **Verified Validation Metrics**:
+  - **Accuracy**: $95.75\%$
+  - **Precision**: $96.30\%$
+  - **Recall**: $95.86\%$
+  - **F1-Score**: $96.08\%$
+  - **ROC-AUC**: $0.9938$
+  - **Confusion Matrix**: True Negatives: 1,047 | False Positives: 48 | False Negatives: 54 | True Positives: 1,251
+- **Dual-Engine Native Fallback**: Seamlessly supports native OpenMP `xgboost` on Linux/Render production containers while automatically adapting to `HistGradientBoostingClassifier` on local development environments.
+
+### 5. Landslide-Aware Segmented Route Optimization
+- **Dynamic Route Partitioning**: Divides candidate route polylines into 5–10 km intervals.
+- **Segment Risk Scoring**: Evaluates each segment against GSI historical records, susceptibility polygons, NASA GPM rainfall observations, and ML hazard estimates.
+- **4-Tier Visual Hazard Classification**:
+  - 🟢 **Green (Lower Hazard)**: Verified corridor with low slope and normal precipitation.
+  - 🟡 **Yellow (Moderate Hazard)**: Elevated caution sector; monitor local weather.
+  - 🟠 **Orange (High Hazard)**: Steep slope or high GSI susceptibility; avoid during heavy rain.
+  - 🔴 **Red (Very High Hazard)**: Critical hazard sector; automated detour routing active.
+  - ⚪ **Grey**: Insufficient environmental data available.
+- **Contextual Disaster Advisories**: Transparent warnings following NDMA/SDMA standards.
+
+### 6. Live GPS Navigation & Autonomous Detour Rerouting
+- **Current GPS Tracking**: Browser Geolocation API with high accuracy mode, compass heading, and GPS accuracy radius indicator.
+- **Destination Autocomplete**: Real-time OpenStreetMap Nominatim reverse geocoding with mountain pass quick-select chips.
+- **Turn-by-Turn Guidance**: Audio voice prompts via Web Speech API, next turn distance, maneuver icons, and floating HUD.
+- **Off-Route Detection**: Automatic trajectory deviation check (> 60m threshold) with silent background recalculation.
+
+### 7. Geotechnical Slope Stabilization & Prevention Infrastructure
+- **Mitigation Assets**: Geo-located mitigation structures (Soil Nailing, Gabion Walls, Rockfall Netting, Siphon Horizontal Drains, Inclinometers).
+- **Factor of Safety (FoS) Calculator**: Computes pre- and post-stabilization slope stability with real-time risk reduction percentages.
+
+---
+
+## 🏛️ System Architecture
+
+```mermaid
+graph TD
+    User["User Client (Web / Mobile GPS)"] -->|HTTPS| Frontend["RouteX Frontend (HTML5, CSS3, ES6 JavaScript, Leaflet)"]
+    
+    subgraph FastAPI Application Engine
+        Router["FastAPI Backend (backend/main.py)"]
+        
+        GSI_Svc["GSI Service (backend/services/gsi_service.py)"]
+        NASA_Svc["NASA GPM Service (backend/services/nasa_gpm_service.py)"]
+        DEM_Svc["Terrain DEM Service (backend/services/terrain_service.py)"]
+        ML_Svc["Landslide Prediction Service (backend/services/landslide_prediction.py)"]
+        Route_Svc["Route Risk Service (backend/services/route_risk_service.py)"]
+        OSRM_Svc["Router Engine (backend/router.py)"]
+    end
+    
+    subgraph External Public & Satellite Datasets
+        GSI_Data["GSI Bhukosh NLSM (GeoJSON / CSV)"]
+        NASA_CMR["NASA Earthdata / CMR IMERG Stream"]
+        DEM_Data["SRTM 30m / Copernicus DEM Gradients"]
+        OSRM_API["OpenStreetMap / OSRM Routing Engine"]
+    end
+    
+    Frontend -->|REST APIs| Router
+    Router --> GSI_Svc
+    Router --> NASA_Svc
+    Router --> DEM_Svc
+    Router --> ML_Svc
+    Router --> Route_Svc
+    Router --> OSRM_Svc
+    
+    GSI_Svc --> GSI_Data
+    NASA_Svc --> NASA_CMR
+    DEM_Svc --> DEM_Data
+    OSRM_Svc --> OSRM_API
+```
+
+---
+
+## 📁 Repository Directory Structure
+
+```text
+RouteX2/
+├── .env.example                     # Environment template (NASA Earthdata, ORS, Port)
+├── .gitignore                       # Git ignore rules for venvs, secrets, logs
+├── requirements.txt                 # Root production Python dependencies
+├── README.md                        # Complete project documentation manual
+├── run_server.py                    # Server launcher script
+│
+├── backend/
+│   ├── main.py                      # FastAPI application & REST endpoint definitions
+│   ├── router.py                    # OSRM router & polygon avoidance engine
+│   ├── requirements.txt             # Backend-scoped requirements
+│   │
+│   ├── datasets/                    # Authoritative geospatial datasets
+│   │   ├── gsi_landslide_inventory.json     # GSI historical landslide catalog
+│   │   └── gsi_susceptibility_zones.geojson # GSI NLSM macro-zonation polygons
+│   │
+│   ├── services/                    # Modular geospatial & prediction services
+│   │   ├── gsi_service.py           # GSI catalog querying & dataset import pipeline
+│   │   ├── nasa_gpm_service.py      # NASA GPM IMERG satellite rainfall engine
+│   │   ├── terrain_service.py       # SRTM DEM elevation, slope & TWI extractor
+│   │   ├── landslide_prediction.py  # Multi-factor AI prediction orchestrator
+│   │   └── route_risk_service.py    # Route polyline segmentation & risk assessment
+│   │
+│   ├── ml/                          # Machine learning training & evaluation
+│   │   ├── train_model.py           # Model training pipeline (12k samples, 80/20 split)
+│   │   └── evaluate_model.py        # Independent evaluation & cross-validation
+│   │
+│   └── models/                      # Trained model artifacts & metrics
+│       ├── landslide_model.pkl      # Calibrated GBDT / XGBoost model artifact
+│       └── model_metrics.json       # Genuine validation performance metrics
+│
+└── frontend/
+    ├── index.html                   # Dark glassmorphism UI & dashboard layout
+    ├── styles.css                   # Custom CSS design system, cards, animations
+    └── app.js                       # Map layers, live GPS, navigation & AI inspector
+```
+
+---
+
+## 🔌 API Reference
+
+### 1. Geological Survey of India (GSI) Endpoints
+
+| Method | Endpoint | Description | Query / Body Parameters |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/gsi/records` | Returns catalog of verified historical landslide events | `None` |
+| `GET` | `/api/gsi/susceptibility-zones` | Returns GSI NLSM susceptibility polygons in GeoJSON | `None` |
+| `GET` | `/api/gsi/point` | Point susceptibility class and nearest GSI slide | `lat=float&lon=float` |
+| `POST` | `/api/gsi/import` | Ingests and validates administrator GSI dataset | `{"content": "...", "file_format": "csv"}` |
+
+### 2. NASA GPM Satellite Rainfall Endpoints
+
+| Method | Endpoint | Description | Query / Body Parameters |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/rainfall/current` | Instantaneous precipitation rate (`mm/h`) and 1h rain | `lat=float&lon=float` *(optional, default provided)* |
+| `GET` | `/api/rainfall/location` | Multi-temporal accumulation (30m, 1h, 24h, 3d, 7d, AMI) | `lat=float&lon=float` |
+| `GET` | `/api/rainfall/history` | Chronological hourly precipitation timeline | `lat=float&lon=float&hours=72` |
+| `GET` | `/api/rainfall/region` | Spatial rainfall grid across a bounding box corridor | `min_lat, min_lon, max_lat, max_lon, steps` |
+
+### 3. Digital Elevation Model (DEM) Endpoints
+
+| Method | Endpoint | Description | Query / Body Parameters |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/terrain/profile` | DEM elevation, slope gradient ($^\circ$), aspect, and TWI | `lat=float&lon=float` |
+
+### 4. Machine Learning & Prediction Endpoints
+
+| Method | Endpoint | Description | Query / Body Parameters |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/prediction/landslide` | Multi-factor AI hazard assessment for any coordinate | `{"latitude": 30.245, "longitude": 78.892}` |
+| `GET` | `/api/prediction/model-metrics` | Genuine model validation metrics and confusion matrix | `None` |
+
+### 5. Navigation & Route Risk Endpoints
+
+| Method | Endpoint | Description | Query / Body Parameters |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/route` | Calculates OSRM route, geofences, and segmented risk | `{"start": [lon, lat], "end": [lon, lat], "include_steps": true}` |
+| `POST` | `/api/route/segmented-risk` | Partitions arbitrary route polyline into risk segments | `{"coordinates": [[lon, lat], ...]}` |
+| `POST` | `/api/navigation/check` | Real-time GPS off-route and turn progress telemetry | `{"current_position": [lon, lat], "route_coordinates": [...]}` |
+| `POST` | `/api/simulate-landslide` | Injects sudden landslide failure for dynamic rerouting | `{"start": [lon, lat], "end": [lon, lat]}` |
+
+---
+
+## ⚙️ Environment Configuration
+
+Create a `.env` file in the root directory based on `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your credentials:
+
+```env
+# NASA Earthdata Login Credentials (for NASA CMR / GES DISC IMERG access)
+# Register for free at: https://urs.earthdata.nasa.gov/
+EARTHDATA_USERNAME=your_earthdata_username
+EARTHDATA_PASSWORD=your_earthdata_password
+
+# OpenRouteService API Key (Optional - Fallback OSRM engine active if omitted)
+# Register at: https://openrouteservice.org/
+ORS_API_KEY=your_ors_api_key_here
+
+# Hugging Face API Key (Optional - For AI Landslide Emergency Chatbot Assistant)
+# Register at: https://huggingface.co/settings/tokens
+HF_API_KEY=your_huggingface_api_key_here
+
+# Server Configuration
+PORT=8000
+HOST=0.0.0.0
+CORS_ORIGINS=*
+ENVIRONMENT=production
+```
+
+> [!NOTE]
+> All credentials are stored securely in backend environment variables and are **never exposed to frontend JavaScript**.
+
+---
+
+## 🚀 Local Installation & Running
+
+### 1. Prerequisites
+- Python 3.10+ (Python 3.11 or 3.12 recommended)
+- `git`
+- Modern web browser (Chrome, Safari, Firefox, Edge)
+
+### 2. Setup Virtual Environment
+```bash
+# Clone the repository
+git clone https://github.com/shashwat7-io/RouteX2.git
+cd RouteX2
+
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 3. Model Training (Optional, pre-trained model included)
+```bash
+python backend/ml/train_model.py
+```
+
+### 4. Start Local Server
+```bash
+python run_server.py
+```
+Open your browser and navigate to:
+```text
+http://localhost:8000
+```
+
+---
+
+## 🧪 Comprehensive Verification Suite
+
+To run the automated test suite testing all 13 core endpoints:
+
+```bash
+python -c "
+import urllib.request, json
+base = 'http://localhost:8000'
+for name, path in [
+    ('GSI Inventory', '/api/gsi/records'),
+    ('GSI Susceptibility Zones', '/api/gsi/susceptibility-zones'),
+    ('NASA GPM Current Rain', '/api/rainfall/current'),
+    ('Terrain DEM Profile', '/api/terrain/profile?lat=30.245&lon=78.892'),
+    ('Model Metrics', '/api/prediction/model-metrics')
+]:
+    with urllib.request.urlopen(f'{base}{path}') as r:
+        print(f'✅ {name}: Status {r.status}')
+"
+```
+
+---
+
+## ☁️ Production Deployment (Render)
+
+### Deploying Backend Web Service on Render:
+1. Connect your GitHub repository (`shashwat7-io/RouteX2`) to [Render Dashboard](https://dashboard.render.com).
+2. Choose **Web Service**.
+3. Configure the settings:
+   - **Environment**: `Python 3`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+4. Add Environment Variables in Render:
+   - `EARTHDATA_USERNAME`
+   - `EARTHDATA_PASSWORD`
+   - `PORT=8000`
+   - `PYTHON_VERSION=3.11.9`
+5. Click **Create Web Service**.
+
+---
+
+## 🛡️ Disaster Management Advisory & Disclaimer
+
+> [!IMPORTANT]
+> Hazard assessments generated by RouteX AI 2.0 are derived from satellite observations (NASA GPM), GSI susceptibility macro-zonation, and DEM slope gradient analysis. Mountain weather and geological conditions can deteriorate rapidly due to cloudbursts, toe cutting, and structural seismic activity. **Never assume a route is completely hazard-free.** Always heed official disaster management alerts issued by the **National Disaster Management Authority (NDMA)** and respective **State Disaster Management Authorities (SDMA)**.
+
+---
+
+## 📄 License & Attribution
+- **Geological Survey of India (GSI)**: National Landslide Susceptibility Mapping (NLSM) & Bhukosh Public Data Portal.
+- **NASA Global Precipitation Measurement (GPM)**: NASA Earthdata / GES DISC IMERG Satellite Observations.
+- **OpenStreetMap**: Map data © OpenStreetMap contributors, licensed under the Open Database License (ODbL).

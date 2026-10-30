@@ -63,7 +63,7 @@ class RouterEngine:
         osrm_url = f"http://router.project-osrm.org/route/v1/driving/{coord_str}?overview=full&geometries=geojson{steps_param}&alternatives=true"
         
         try:
-            resp = requests.get(osrm_url, timeout=7, headers={"User-Agent": "RouteX/2.0 (Landslide Safe Navigation Engine)"})
+            resp = requests.get(osrm_url, timeout=4.0, headers={"User-Agent": "RouteX/2.0 (Landslide Safe Navigation Engine)"})
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("routes") and len(data["routes"]) > 0:

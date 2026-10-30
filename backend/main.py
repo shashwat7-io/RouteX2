@@ -17,6 +17,12 @@ from geofence import GeofenceEngine
 from router import RouterEngine
 from prevention_engine import PreventionEngine, PREVENTION_ASSETS
 
+from services.gsi_service import GSILandslideService
+from services.nasa_gpm_service import NASAGPMService
+from services.terrain_service import TerrainService
+from services.landslide_prediction import LandslidePredictionService
+from services.route_risk_service import RouteRiskAssessmentService
+
 
 app = FastAPI(
     title="Landslide Risk Detection & Dynamic Routing Engine",
@@ -38,6 +44,13 @@ lhi_engine = LHIEngine()
 geofence_engine = GeofenceEngine(default_buffer_radius_m=800.0)
 router_engine = RouterEngine()
 prevention_engine = PreventionEngine()
+
+# Initialize GSI, NASA GPM, Terrain and Upgraded AI Services
+gsi_service = GSILandslideService()
+gpm_service = NASAGPMService()
+terrain_service = TerrainService()
+prediction_service = LandslidePredictionService(gsi_service, gpm_service, terrain_service)
+route_risk_service = RouteRiskAssessmentService(gsi_service, gpm_service, prediction_service)
 
 
 # In-memory geocode cache to reduce redundant lookups
@@ -83,6 +96,24 @@ class PreventionMitigationRequest(BaseModel):
     baseline_lhi: float = Field(default=0.85, description="Initial unmitigated LHI score")
     slope_angle: Optional[float] = Field(default=42.0, description="Slope gradient in degrees")
     mitigation_types: Optional[List[str]] = Field(default=["drainage_channel", "soil_nailing", "retaining_wall"], description="List of interventions to deploy")
+
+class PredictionLandslideRequest(BaseModel):
+    latitude: float = Field(..., description="Target latitude")
+    longitude: float = Field(..., description="Target longitude")
+    slope_angle: Optional[float] = Field(None, description="Optional override slope in degrees")
+    rainfall_24h: Optional[float] = Field(None, description="Optional override 24h rainfall in mm")
+    soil_saturation: Optional[float] = Field(None, description="Optional override soil saturation (0.0 to 1.0)")
+
+class GSIImportPayload(BaseModel):
+    content: str = Field(..., description="Raw CSV or GeoJSON content")
+    file_format: str = Field(default="csv", description="csv, txt, geojson, or json")
+    filename: Optional[str] = Field(default="admin_upload.csv", description="Original file name")
+
+class RouteSegmentRiskRequest(BaseModel):
+    route_coordinates: Optional[List[List[float]]] = Field(None, description="Active route polyline [[lon, lat], ...]")
+    coordinates: Optional[List[List[float]]] = Field(None, description="Alternative field for route coordinates")
+    distance_km: Optional[float] = 0.0
+    duration_min: Optional[float] = 0.0
 
 
 # Regional Presets
@@ -187,6 +218,106 @@ def calculate_prevention_mitigation(req: PreventionMitigationRequest):
         req.slope_angle or 40.0,
         req.mitigation_types or ["drainage_channel", "soil_nailing", "retaining_wall"]
     )
+
+
+# ============================================================================
+# 1. GSI (GEOLOGICAL SURVEY OF INDIA) LANDSLIDE DATA APIS
+# ============================================================================
+@app.get("/api/gsi/records")
+def get_gsi_records(state: Optional[str] = Query(None, description="Filter by state (e.g. Uttarakhand, Sikkim)")):
+    """Returns official GSI historical landslide inventory records from Bhukosh NLSM."""
+    records = gsi_service.get_all_records(state=state)
+    return {
+        "agency": "Geological Survey of India (GSI)",
+        "source": "GSI Bhukosh National Landslide Susceptibility Mapping (NLSM)",
+        "total_records": len(records),
+        "records": records
+    }
+
+@app.get("/api/gsi/susceptibility-zones")
+def get_gsi_susceptibility_zones():
+    """Returns GSI NLSM regional landslide susceptibility GeoJSON polygons."""
+    return gsi_service.get_susceptibility_geojson()
+
+@app.get("/api/gsi/point")
+def get_gsi_point_susceptibility(lat: float = Query(...), lon: float = Query(...)):
+    """Evaluates GSI NLSM susceptibility class and nearest historical landslide for a coordinate."""
+    return gsi_service.get_point_susceptibility(lat, lon)
+
+@app.post("/api/gsi/import")
+def import_gsi_dataset(payload: GSIImportPayload):
+    """Allows manual upload and validation of GSI landslide datasets in CSV/GeoJSON formats."""
+    result = gsi_service.import_dataset(payload.content, payload.file_format, payload.filename or "import")
+    return result
+
+
+# ============================================================================
+# 2. NASA GPM (GLOBAL PRECIPITATION MEASUREMENT) RAINFALL APIS
+# ============================================================================
+@app.get("/api/rainfall/current")
+def get_rainfall_current(lat: Optional[float] = Query(None), lon: Optional[float] = Query(None)):
+    """Retrieves current instantaneous precipitation rate (mm/h) and last 1h accumulation."""
+    cur_lat = lat if lat is not None else 30.245
+    cur_lon = lon if lon is not None else 78.892
+    return gpm_service.get_current_rainfall(cur_lat, cur_lon)
+
+@app.get("/api/rainfall/location")
+def get_rainfall_location(lat: float = Query(...), lon: float = Query(...)):
+    """Retrieves multi-temporal rainfall accumulation (30m, 1h, 24h, 3d, 7d) from NASA GPM IMERG stream."""
+    return gpm_service.get_rainfall_for_location(lat, lon)
+
+@app.get("/api/rainfall/history")
+def get_rainfall_history(lat: float = Query(...), lon: float = Query(...), hours: int = Query(72, description="Hours of history")):
+    """Returns chronological hourly precipitation timeline for time-series visualization."""
+    return gpm_service.get_rainfall_history(lat, lon, hours=hours)
+
+@app.get("/api/rainfall/region")
+def get_rainfall_region(min_lat: float = Query(...), min_lon: float = Query(...),
+                        max_lat: float = Query(...), max_lon: float = Query(...),
+                        steps: int = Query(5)):
+    """Retrieves spatial precipitation grid across a bounding box corridor."""
+    return gpm_service.get_regional_rainfall_grid(min_lat, min_lon, max_lat, max_lon, steps=steps)
+
+
+# ============================================================================
+# 3. TERRAIN & DEM GEOGRAPHICAL APIS
+# ============================================================================
+@app.get("/api/terrain/profile")
+def get_terrain_profile(lat: float = Query(...), lon: float = Query(...)):
+    """Calculates DEM elevation, slope gradient, aspect, roughness, and TWI."""
+    return terrain_service.get_terrain_profile(lat, lon)
+
+
+# ============================================================================
+# 4. MULTI-FACTOR XGBOOST LANDSLIDE PREDICTION APIS
+# ============================================================================
+@app.post("/api/prediction/landslide")
+def predict_landslide_hazard(req: PredictionLandslideRequest):
+    """
+    Evaluates multi-source landslide hazard using NASA GPM rainfall, GSI susceptibility,
+    DEM terrain geometry, and trained Gradient Boosted Trees model.
+    """
+    return prediction_service.predict_hazard(
+        req.latitude, req.longitude,
+        override_slope=req.slope_angle,
+        override_r24=req.rainfall_24h,
+        override_soil=req.soil_saturation
+    )
+
+@app.get("/api/prediction/model-metrics")
+def get_model_metrics():
+    """Returns verified model validation performance metrics (Accuracy, ROC-AUC, F1, Confusion Matrix)."""
+    return prediction_service.model_metrics
+
+
+# ============================================================================
+# 5. LANDSLIDE-AWARE SEGMENTED ROUTE RISK APIS
+# ============================================================================
+@app.post("/api/route/segmented-risk")
+def get_route_segmented_risk(req: RouteSegmentRiskRequest):
+    """Partitions candidate route into intervals and assesses spatial risk against GSI and NASA GPM data."""
+    coords = req.route_coordinates or req.coordinates or []
+    return route_risk_service.analyze_route_risk(coords, req.distance_km or 0.0, req.duration_min or 0.0)
 
 
 @app.get("/api/environmental-metrics")
@@ -467,6 +598,13 @@ def compute_route(req: RouteRequest):
             detour_reason = f"Elevated hazard zone nearby ({near_hazard['hazard_name']}, LHI: {near_hazard['lhi']}). Route monitored."
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    active_route = recalculated_route if is_rerouted else primary_route
+    chosen_coords = active_route.get("coordinates", [])
+    risk_assessment = route_risk_service.analyze_route_risk(
+        chosen_coords,
+        active_route.get("distance_km", 0.0),
+        active_route.get("duration_min", 0.0)
+    )
 
     return {
         "is_rerouted": is_rerouted,
@@ -482,7 +620,8 @@ def compute_route(req: RouteRequest):
         "recalculated_safe_route": recalculated_route if is_rerouted else primary_route,
         "distance_impact_km": round((recalculated_route["distance_km"] - primary_route["distance_km"]), 2) if recalculated_route else 0.0,
         "eta_impact_min": round((recalculated_route["duration_min"] - primary_route["duration_min"]), 1) if recalculated_route else 0.0,
-        "prevention_assets": prevention_engine.find_assets_near_route(primary_coords, buffer_radius_km=18.0)
+        "prevention_assets": prevention_engine.find_assets_near_route(primary_coords, buffer_radius_km=18.0),
+        "route_risk_assessment": risk_assessment
     }
 
 

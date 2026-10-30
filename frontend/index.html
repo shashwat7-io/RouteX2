@@ -252,6 +252,57 @@
           </div>
         </section>
 
+        <!-- Landslide-Aware Segmented Route Risk & GSI Intersection Card -->
+        <section id="route-segmented-risk-card" class="panel-card route-risk-card hidden">
+          <div class="card-header justify-between">
+            <div class="flex-align-gap">
+              <i data-lucide="layers" class="text-amber" style="color:var(--accent-amber);"></i>
+              <h2>Corridor Hazard Segmentation</h2>
+            </div>
+            <span id="route-risk-badge" class="status-badge-emerald" style="background:rgba(16,185,129,0.15); color:#10b981;">LOWER RISK</span>
+          </div>
+
+          <div class="route-risk-summary-grid">
+            <div class="risk-summary-cell">
+              <span class="cell-sub">Route Hazard Index</span>
+              <span class="cell-main" id="route-hazard-score-val">0.24</span>
+            </div>
+            <div class="risk-summary-cell">
+              <span class="cell-sub">GSI Susceptibility</span>
+              <span class="cell-main text-orange" id="route-gsi-zones-val">Zone III Overlap</span>
+            </div>
+            <div class="risk-summary-cell">
+              <span class="cell-sub">GSI Historical Slides</span>
+              <span class="cell-main text-amber" id="route-gsi-slides-val">2 Within 4km</span>
+            </div>
+            <div class="risk-summary-cell">
+              <span class="cell-sub">NASA GPM Rain Peak</span>
+              <span class="cell-main text-cyan" id="route-rain-peak-val">12.4 mm/24h</span>
+            </div>
+          </div>
+
+          <!-- Color-coded route segment visualizer bar -->
+          <div class="route-segment-bar-container">
+            <div class="segment-bar-title">
+              <span>Segment Hazard Distribution:</span>
+              <span id="segment-bar-breakdown">8 Segments Monitored</span>
+            </div>
+            <div id="route-segments-visual-bar" class="route-segments-visual-bar">
+              <!-- Dynamically populated segment color blocks (green, yellow, orange, red) -->
+            </div>
+          </div>
+
+          <!-- Active Corridor Alerts & Disaster Advisories -->
+          <div id="route-risk-alerts-container" class="route-risk-alerts-box">
+            <!-- Dynamically populated alert pills -->
+          </div>
+
+          <div class="official-advisory-note">
+            <i data-lucide="shield-alert" style="width:14px; height:14px; color:#f59e0b; flex-shrink:0;"></i>
+            <span>Data streams: Geological Survey of India (Bhukosh NLSM) & NASA GPM IMERG satellite precipitation. Always follow NDMA/SDMA directives.</span>
+          </div>
+        </section>
+
         <!-- Landslide Prevention & Mitigation System Card -->
         <section id="prevention-panel-card" class="panel-card prevention-card">
           <div class="card-header justify-between">
@@ -405,6 +456,110 @@
           </div>
         </section>
 
+        <!-- Live Multi-Source Data Status & Attribution Card -->
+        <section id="data-stream-status-card" class="panel-card stream-status-card">
+          <div class="card-header justify-between">
+            <div class="flex-align-gap">
+              <i data-lucide="radio" class="text-cyan" style="color:var(--accent-teal);"></i>
+              <h2>Scientific Data Streams</h2>
+            </div>
+            <span class="status-badge-emerald" style="font-size:0.68rem; padding:2px 7px;">GSI & NASA Active</span>
+          </div>
+
+          <div class="stream-badges-grid">
+            <div class="stream-status-row">
+              <div class="stream-label-group">
+                <span class="pulse-dot green" style="width:7px; height:7px;"></span>
+                <span class="stream-name">GSI Bhukosh NLSM:</span>
+              </div>
+              <span class="stream-val">13 Records • 6 Zones</span>
+            </div>
+            <div class="stream-status-row">
+              <div class="stream-label-group">
+                <span class="pulse-dot green" style="width:7px; height:7px;"></span>
+                <span class="stream-name">NASA GPM IMERG:</span>
+              </div>
+              <span class="stream-val" id="stream-gpm-status">Calibrated Stream (30m/24h)</span>
+            </div>
+            <div class="stream-status-row">
+              <div class="stream-label-group">
+                <span class="pulse-dot green" style="width:7px; height:7px;"></span>
+                <span class="stream-name">SRTM 30m DEM:</span>
+              </div>
+              <span class="stream-val">Central Difference Gradients</span>
+            </div>
+            <div class="stream-status-row">
+              <div class="stream-label-group">
+                <span class="pulse-dot green" style="width:7px; height:7px;"></span>
+                <span class="stream-name">XGBoost ML v2.2.0:</span>
+              </div>
+              <span class="stream-val text-emerald">95.8% Acc • 0.994 ROC-AUC</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Multi-Factor AI Landslide Hazard Inspector -->
+        <section id="ai-inspector-card" class="panel-card ai-inspector-card">
+          <div class="card-header justify-between">
+            <div class="flex-align-gap">
+              <i data-lucide="scan" class="text-emerald" style="color:var(--accent-emerald);"></i>
+              <h2>AI Slope Hazard Inspector</h2>
+            </div>
+            <span id="ai-insp-badge" class="status-badge-emerald" style="display:none;">READY</span>
+          </div>
+          <p class="card-desc">Execute multi-source AI hazard inference on any geographical point using real GSI, NASA GPM, and DEM data.</p>
+
+          <div class="inspector-inputs-grid">
+            <div class="input-item">
+              <label>Latitude:</label>
+              <input type="number" id="inp-insp-lat" step="0.0001" value="30.2450">
+            </div>
+            <div class="input-item">
+              <label>Longitude:</label>
+              <input type="number" id="inp-insp-lon" step="0.0001" value="78.8920">
+            </div>
+          </div>
+
+          <div class="inspector-actions-row">
+            <button id="btn-run-ai-eval" class="btn-primary" style="flex:1;">
+              <i data-lucide="play"></i>
+              <span>Evaluate Hazard</span>
+            </button>
+            <button id="btn-use-curr-point" class="btn-outline" title="Use current region center coordinate">
+              <i data-lucide="crosshair"></i>
+            </button>
+          </div>
+
+          <!-- Inspector Results Box -->
+          <div id="ai-insp-results" class="ai-insp-results-box hidden">
+            <div class="insp-result-header">
+              <span id="insp-cat-pill" class="badge-status-pill danger">CRITICAL</span>
+              <span id="insp-score-text">LHI: 0.92 • FoS: 0.98</span>
+            </div>
+            <div class="insp-metrics-grid">
+              <div class="insp-metric-cell">
+                <span class="cell-label">Slope Angle</span>
+                <span class="cell-val" id="insp-slope-val">46.5°</span>
+              </div>
+              <div class="insp-metric-cell">
+                <span class="cell-label">NASA GPM Rain (24h)</span>
+                <span class="cell-val text-cyan" id="insp-r24-val">34.2 mm</span>
+              </div>
+              <div class="insp-metric-cell">
+                <span class="cell-label">GSI Susceptibility</span>
+                <span class="cell-val text-orange" id="insp-gsi-val">Very High</span>
+              </div>
+              <div class="insp-metric-cell">
+                <span class="cell-label">Soil Saturation</span>
+                <span class="cell-val" id="insp-soil-val">82%</span>
+              </div>
+            </div>
+            <div class="insp-advisory-text" id="insp-advisory-text">
+              High risk of debris slide under persistent monsoonal downpour.
+            </div>
+          </div>
+        </section>
+
         <!-- Real-time Landslide Simulation Card -->
         <section class="panel-card simulation-card">
           <div class="card-header">
@@ -550,15 +705,19 @@
         <div class="legend-group">
           <div class="legend-item">
             <span class="legend-line primary-blocked"></span>
-            <span>Blocked Route (Red Dashed)</span>
+            <span>Blocked Route (Red)</span>
           </div>
           <div class="legend-item">
             <span class="legend-line safe-alternate"></span>
-            <span>Safe Detour (Green Solid)</span>
+            <span>Safe Detour (Green)</span>
           </div>
           <div class="legend-item">
-            <span class="legend-circle hazard-geofence"></span>
-            <span>Hazard Geofence</span>
+            <span class="legend-circle gsi-slide-marker"></span>
+            <span>GSI Historical Slide</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-circle gsi-zone-marker"></span>
+            <span>GSI Susceptibility</span>
           </div>
           <div class="legend-item">
             <span class="legend-circle prevention-asset"></span>
@@ -567,20 +726,30 @@
         </div>
 
         <div class="map-controls-group">
-          <label class="toggle-control">
+          <label class="toggle-control" title="Toggle GSI Historical Landslide Inventory">
+            <input type="checkbox" id="chk-gsi-inventory" checked>
+            <span class="slider-toggle"></span>
+            <span class="toggle-label">GSI Inventory</span>
+          </label>
+          <label class="toggle-control" title="Toggle GSI NLSM Susceptibility Zones">
+            <input type="checkbox" id="chk-gsi-zones" checked>
+            <span class="slider-toggle"></span>
+            <span class="toggle-label">GSI Zones</span>
+          </label>
+          <label class="toggle-control" title="Toggle NASA GPM Precipitation Layer">
+            <input type="checkbox" id="chk-nasa-gpm" checked>
+            <span class="slider-toggle"></span>
+            <span class="toggle-label">NASA GPM</span>
+          </label>
+          <label class="toggle-control" title="Toggle Landslide Prevention Infrastructure">
             <input type="checkbox" id="chk-prevention" checked>
             <span class="slider-toggle"></span>
-            <span class="toggle-label">Prevention Assets</span>
+            <span class="toggle-label">Prevention</span>
           </label>
-          <label class="toggle-control">
+          <label class="toggle-control" title="Toggle Danger Geofences">
             <input type="checkbox" id="chk-geofences" checked>
             <span class="slider-toggle"></span>
-            <span class="toggle-label">Danger Geofences</span>
-          </label>
-          <label class="toggle-control">
-            <input type="checkbox" id="chk-heatmap" checked>
-            <span class="slider-toggle"></span>
-            <span class="toggle-label">Risk Heatmap</span>
+            <span class="toggle-label">Geofences</span>
           </label>
         </div>
       </div>
