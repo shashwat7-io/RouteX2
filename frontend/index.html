@@ -37,6 +37,10 @@
     </div>
     
     <div class="header-status-group">
+      <button id="btn-theme-toggle" class="theme-toggle-btn" title="Toggle Dark / Light Mode">
+        <i data-lucide="moon" id="theme-icon"></i>
+        <span id="theme-text">Dark</span>
+      </button>
       <button id="btn-sos-guide" class="sos-header-btn" title="Open Landslide Emergency & Survival Protocol">
         <i data-lucide="life-buoy"></i>
         <span>SOS Guide</span>
@@ -90,153 +94,457 @@
     <!-- Sidebar Control & Telemetry Panel -->
     <aside class="sidebar-panel">
       
-      <!-- Preset Region Selector -->
-      <section class="panel-card">
-        <div class="card-header">
-          <i data-lucide="map-pin"></i>
-          <h2>Geospatial Region Corridors</h2>
-        </div>
-        <div class="preset-buttons">
-          <button class="preset-btn active" data-region="badrinath" id="preset-badrinath">
-            <span class="region-title">🏔️ Rishikesh ➔ Badrinath</span>
-            <span class="region-sub">NH58 Himalayas Highway Pass</span>
-          </button>
-
-          <button class="preset-btn" data-region="sikkim_gangtok" id="preset-gangtok">
-            <span class="region-title">🌿 Siliguri ➔ Gangtok</span>
-            <span class="region-sub">NH10 Teesta River Valley Pass</span>
-          </button>
-
-          <button class="preset-btn" data-region="arunachal_tawang" id="preset-tawang">
-            <span class="region-title">🏔️ Guwahati ➔ Tawang</span>
-            <span class="region-sub">Sela Pass High Altitude Sector</span>
-          </button>
-
-          <button class="preset-btn" data-region="meghalaya_sohra" id="preset-sohra">
-            <span class="region-title">🌧️ Shillong ➔ Cherrapunji</span>
-            <span class="region-sub">Meghalaya Plateau Escarpment</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Real-time Landslide Simulation Card -->
-      <section class="panel-card simulation-card">
-        <div class="card-header">
-          <i data-lucide="zap"></i>
-          <h2>Live Rerouting Simulation</h2>
-        </div>
-        <p class="card-desc">Simulate a sudden catastrophic slope failure along active path to test dynamic obstacle avoidance geofencing.</p>
-        
-        <div class="sim-controls">
-          <button id="btn-simulate" class="btn-primary danger-glow">
-            <i data-lucide="alert-circle"></i>
-            <span>Simulate Slope Failure Event</span>
-          </button>
-          <button id="btn-reset-route" class="btn-secondary">
-            <i data-lucide="rotate-ccw"></i>
-            <span>Reset Primary Route</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Live Environmental Metrics Evaluator -->
-      <section class="panel-card">
-        <div class="card-header">
-          <i data-lucide="sliders"></i>
-          <h2>Geotechnical Evaluator</h2>
-        </div>
-        
-        <div class="slider-group">
-          <div class="slider-header">
-            <label for="slider-rain">24-Hour Rainfall</label>
-            <span id="val-rain" class="slider-value">135 mm</span>
-          </div>
-          <input type="range" id="slider-rain" min="0" max="250" value="135" step="1">
-          <div class="slider-ticks">
-            <span>0 mm</span>
-            <span>60 mm</span>
-            <span>120 mm</span>
-            <span>250 mm</span>
-          </div>
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-header">
-            <label for="slider-soil">Soil Saturation Index (SSI)</label>
-            <span id="val-soil" class="slider-value">0.88</span>
-          </div>
-          <input type="range" id="slider-soil" min="0.10" max="1.00" value="0.88" step="0.01">
-          <div class="slider-ticks">
-            <span>0.10 (Dry)</span>
-            <span>0.50</span>
-            <span>0.80 (Sat)</span>
-            <span>1.00</span>
-          </div>
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-header">
-            <label for="slider-slope">Slope Angle</label>
-            <span id="val-slope" class="slider-value">44°</span>
-          </div>
-          <input type="range" id="slider-slope" min="5" max="60" value="44" step="0.5">
-          <div class="slider-ticks">
-            <span>5°</span>
-            <span>25°</span>
-            <span>45° (Steep)</span>
-            <span>60°</span>
-          </div>
-        </div>
-
-        <div class="action-buttons">
-          <button id="btn-fetch-open-meteo" class="btn-outline">
-            <i data-lucide="cloud-rain"></i>
-            <span>Live Weather Data</span>
-          </button>
-          <button id="btn-recalculate-lhi" class="btn-secondary">
-            <i data-lucide="cpu"></i>
-            <span>Evaluate LHI</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Landslide Hazard Index Gauge -->
-      <section class="panel-card gauge-card">
-        <div class="card-header">
+      <!-- High Impact Mode Switcher Tabs -->
+      <div class="mode-tab-group" role="tablist">
+        <button id="tab-nav-mode" class="mode-tab-btn active" role="tab" aria-selected="true">
+          <i data-lucide="navigation"></i>
+          <span>Live GPS Navigation</span>
+          <span class="tab-badge">LIVE</span>
+        </button>
+        <button id="tab-analysis-mode" class="mode-tab-btn" role="tab" aria-selected="false">
           <i data-lucide="activity"></i>
-          <h2>Landslide Hazard Index (LHI)</h2>
-        </div>
+          <span>Hazard & Simulation</span>
+        </button>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 1: LIVE GPS NAVIGATION SECTION (NEW CORE FEATURE)            -->
+      <!-- ================================================================= -->
+      <div id="nav-mode-container" class="mode-view-section active">
         
-        <div class="gauge-display">
-          <div class="lhi-score-box">
-            <span id="lhi-val" class="lhi-score-text danger">0.864</span>
-            <span class="lhi-max">/ 1.00</span>
+        <!-- 1. Origin & Live GPS Location Card -->
+        <section class="panel-card gps-location-card">
+          <div class="card-header justify-between">
+            <div class="flex-align-gap">
+              <i data-lucide="locate-fixed" class="emerald-icon"></i>
+              <h2>Origin & Current Location</h2>
+            </div>
+            <div id="gps-status-pill" class="gps-status-pill idle">
+              <span class="gps-dot"></span>
+              <span id="gps-status-label">GPS Idle</span>
+            </div>
+          </div>
+
+          <div class="location-input-row">
+            <div class="input-icon-wrapper">
+              <i data-lucide="crosshair" class="input-icon"></i>
+              <input type="text" id="nav-origin-input" class="location-text-field" placeholder="Detecting current GPS position..." readonly />
+            </div>
+            <button id="btn-detect-gps" class="btn-location-action" title="Request Current GPS Fix">
+              <i data-lucide="map-pin"></i>
+              <span>Use My Location</span>
+            </button>
+          </div>
+
+          <!-- GPS Accuracy & Telemetry Badge -->
+          <div class="gps-telemetry-meta">
+            <span class="meta-item"><i data-lucide="radar"></i> <span id="gps-accuracy-text">Accuracy: Pending Fix</span></span>
+            <span class="meta-item"><i data-lucide="compass"></i> <span id="gps-coords-preview">-- , --</span></span>
+          </div>
+
+          <!-- GPS Permission / Error Banner -->
+          <div id="gps-error-banner" class="status-notice-box hidden">
+            <i data-lucide="alert-circle"></i>
+            <div class="notice-text">
+              <strong id="gps-error-title">Location Permission Needed</strong>
+              <p id="gps-error-desc">Click 'Use My Location' and allow browser GPS permission to navigate.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. Destination Search Card with Autocomplete -->
+        <section class="panel-card destination-search-card">
+          <div class="card-header">
+            <i data-lucide="map-pin" class="blue-icon"></i>
+            <h2>Destination Search</h2>
           </div>
           
-          <div class="lhi-bar-wrapper">
-            <div id="lhi-fill-bar" class="lhi-bar-fill danger-bg" style="width: 86.4%;"></div>
-            <div class="threshold-marker" style="left: 75%;" title="Danger Limit (0.75)">
-              <span class="marker-label">0.75 Limit</span>
+          <div class="search-autocomplete-box">
+            <div class="search-input-field-wrap">
+              <i data-lucide="search" class="search-field-icon"></i>
+              <input type="text" id="dest-search-input" class="dest-input" placeholder="Search city, address, or landmark..." autocomplete="off" />
+              <div id="dest-search-spinner" class="spinner-sm hidden"></div>
+              <button id="btn-clear-dest" class="btn-input-clear hidden" aria-label="Clear destination">
+                <i data-lucide="x"></i>
+              </button>
             </div>
+            
+            <!-- Autocomplete Suggestions Dropdown -->
+            <ul id="dest-autocomplete-list" class="autocomplete-dropdown hidden" role="listbox"></ul>
+          </div>
+
+          <!-- Popular Mountain Destinations Chips -->
+          <div class="quick-dest-chips">
+            <span class="chips-title">Quick Mountain Passes:</span>
+            <div class="chips-flex">
+              <button class="dest-chip" data-dest="Badrinath Temple" data-lat="30.7433" data-lon="79.4938">🏔️ Badrinath</button>
+              <button class="dest-chip" data-dest="Gangtok NH10" data-lat="27.3389" data-lon="88.6138">🌿 Gangtok</button>
+              <button class="dest-chip" data-dest="Tawang Sela Pass" data-lat="27.5861" data-lon="91.8594">🏔️ Tawang</button>
+              <button class="dest-chip" data-dest="Kedarnath Temple" data-lat="30.7346" data-lon="79.0669">🛕 Kedarnath</button>
+              <button class="dest-chip" data-dest="Cherrapunji (Sohra)" data-lat="25.2702" data-lon="91.7323">🌧️ Cherrapunji</button>
+            </div>
+          </div>
+
+          <button id="btn-calc-route" class="btn-primary calc-route-btn" disabled>
+            <i data-lucide="route"></i>
+            <span>Calculate Landslide-Safe Route</span>
+          </button>
+        </section>
+
+        <!-- 3. Calculated Route Information & Landslide Hazard Panel -->
+        <section id="route-info-card" class="panel-card route-summary-card hidden">
+          <div class="card-header justify-between">
+            <div class="flex-align-gap">
+              <i data-lucide="check-check" class="emerald-icon"></i>
+              <h2>Planned Route Assessment</h2>
+            </div>
+            <span id="route-provider-pill" class="provider-pill">OSRM Safe Engine</span>
+          </div>
+
+          <!-- Route Key Metrics -->
+          <div class="route-metrics-grid">
+            <div class="metric-stat">
+              <span class="stat-label">Total Distance</span>
+              <span id="nav-route-dist" class="stat-value">-- km</span>
+            </div>
+            <div class="metric-stat">
+              <span class="stat-label">Estimated Time</span>
+              <span id="nav-route-dur" class="stat-value">-- min</span>
+            </div>
+            <div class="metric-stat">
+              <span class="stat-label">Arrival ETA</span>
+              <span id="nav-route-eta" class="stat-value">--:--</span>
+            </div>
+          </div>
+
+          <!-- Landslide Hazard Verification Banner -->
+          <div id="nav-hazard-safety-badge" class="hazard-safety-banner safe">
+            <div class="banner-header-row">
+              <i data-lucide="shield-check" id="nav-safety-icon"></i>
+              <strong id="nav-safety-title">Verified Safe Route</strong>
+            </div>
+            <p id="nav-detour-rationale">No active landslide buffer geofences intersect this route corridor.</p>
+            <div class="hazard-meta-row">
+              <span id="nav-hazard-time">Data verified: Live Open-Meteo & XGBoost ML</span>
+            </div>
+          </div>
+
+          <!-- Route Alternatives Selector -->
+          <div id="nav-alternatives-container" class="alternatives-box hidden">
+            <span class="alt-label">Available Route Options:</span>
+            <div id="nav-alternatives-list" class="alt-btn-group"></div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="nav-action-buttons">
+            <button id="btn-start-nav" class="btn-primary start-nav-btn pulse-glow">
+              <i data-lucide="navigation"></i>
+              <span>Start Live Navigation</span>
+            </button>
+            <button id="btn-simulate-drive" class="btn-secondary" title="Test drive along route with simulated movement">
+              <i data-lucide="play-circle"></i>
+              <span>Simulate Driving Progress</span>
+            </button>
+            <button id="btn-clear-route" class="btn-outline">
+              <i data-lucide="rotate-ccw"></i>
+              <span>Clear Route</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Landslide Prevention & Mitigation System Card -->
+        <section id="prevention-panel-card" class="panel-card prevention-card">
+          <div class="card-header justify-between">
+            <div class="flex-align-gap">
+              <i data-lucide="shield-plus" class="text-emerald" style="color:var(--accent-emerald);"></i>
+              <h2>Slope Stabilization & Prevention</h2>
+            </div>
+            <span class="status-badge-emerald" id="prevention-status-badge">4 Assets Active</span>
+          </div>
+
+          <div class="prevention-summary-box">
+            <div class="prevention-metric-item">
+              <span class="prev-metric-label">Corridor Stability (FoS)</span>
+              <span class="prev-metric-val text-emerald" id="prev-fos-val">1.72 (Stable)</span>
+            </div>
+            <div class="prevention-metric-item">
+              <span class="prev-metric-label">Hazard Risk Mitigation</span>
+              <span class="prev-metric-val text-cyan" id="prev-reduction-val">-68% Risk</span>
+            </div>
+          </div>
+
+          <!-- Interactive Mitigation Simulator -->
+          <div class="mitigation-simulator-box">
+            <div class="mitigation-sim-header">
+              <div class="flex-align-gap">
+                <i data-lucide="sliders" style="width:15px; height:15px;"></i>
+                <span class="text-sm font-semibold">Simulate Slope Reinforcement</span>
+              </div>
+              <label class="toggle-control small">
+                <input type="checkbox" id="chk-simulate-mitigation">
+                <span class="slider-toggle"></span>
+              </label>
+            </div>
+            <p class="mitigation-sim-desc">
+              Virtually deploy high-tensile rockfall barriers, subsurface drainage siphons, and soil nailing along vulnerable slopes to observe live stabilization.
+            </p>
+            <div id="mitigation-impact-pill" class="mitigation-impact-pill hidden">
+              <i data-lucide="check-circle-2" style="width:16px; height:16px; color:#10b981;"></i>
+              <span>Slope stabilized: Factor of Safety improved to 1.74! Hazard geofences neutralized.</span>
+            </div>
+          </div>
+
+          <!-- Deployed Prevention Assets Accordion -->
+          <div class="prevention-assets-list">
+            <div class="prev-list-title">
+              <span>Deployed Mitigation Infrastructure Along Route:</span>
+              <span id="prev-asset-count" class="badge-count">5</span>
+            </div>
+            <div id="prevention-assets-scroll" class="prevention-items-scroll">
+              <!-- Dynamically populated prevention asset items -->
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. Live Turn-by-Turn Active Guidance Panel -->
+        <section id="active-nav-panel" class="panel-card active-nav-card hidden">
+
+          <div class="card-header justify-between">
+            <div class="flex-align-gap">
+              <span class="live-recording-dot"></span>
+              <h2>Active Navigation Guidance</h2>
+            </div>
+            <div class="nav-speed-badge">
+              <span id="nav-live-speed">0 km/h</span>
+            </div>
+          </div>
+
+          <!-- Off-Route Recalculation Alert -->
+          <div id="nav-offroute-alert" class="nav-offroute-box hidden">
+            <div class="spinner-sm"></div>
+            <span>Off planned route! Recalculating landslide-safe detour...</span>
+          </div>
+
+          <!-- Hazard Proximity Alert Pill -->
+          <div id="nav-proximity-alert" class="nav-proximity-box hidden">
+            <i data-lucide="alert-triangle"></i>
+            <span id="nav-proximity-text">Caution: Approaching Landslide Risk Zone in 1.2 km</span>
+          </div>
+
+          <!-- Prominent Next Maneuver Card -->
+          <div class="next-maneuver-hero">
+            <div class="maneuver-icon-box">
+              <i data-lucide="arrow-up" id="nav-active-icon"></i>
+            </div>
+            <div class="maneuver-text-group">
+              <div id="nav-active-dist" class="maneuver-dist">In 350 m</div>
+              <div id="nav-active-text" class="maneuver-instruction">Head onto Mountain Highway</div>
+              <div id="nav-active-street" class="maneuver-sub">Toward Destination Corridor</div>
+            </div>
+          </div>
+
+          <!-- Navigation Control Toolbar -->
+          <div class="nav-controls-toolbar">
+            <button id="btn-toggle-follow" class="btn-toolbar-toggle active" title="Toggle Auto-Follow Center">
+              <i data-lucide="crosshair"></i>
+              <span>Follow Me</span>
+            </button>
+            <button id="btn-toggle-voice" class="btn-toolbar-toggle active" title="Toggle Voice Alerts">
+              <i data-lucide="volume-2" id="voice-icon"></i>
+              <span>Audio</span>
+            </button>
+            <button id="btn-end-nav" class="btn-danger-action">
+              <i data-lucide="square"></i>
+              <span>End Navigation</span>
+            </button>
+          </div>
+
+          <!-- Collapsible Turn-by-Turn Steps List -->
+          <div class="upcoming-steps-accordion">
+            <button id="btn-toggle-steps-list" class="steps-accordion-btn">
+              <span>Upcoming Turn-by-Turn Steps (<span id="steps-count-badge">0</span>)</span>
+              <i data-lucide="chevron-down" id="steps-chevron"></i>
+            </button>
+            <div id="nav-full-steps-list" class="steps-list-scroll hidden"></div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 2: CORRIDOR ANALYSIS & SIMULATION (ORIGINAL FEATURES 100%)    -->
+      <!-- ================================================================= -->
+      <div id="analysis-mode-container" class="mode-view-section hidden">
+        
+        <!-- Preset Region Selector -->
+        <section class="panel-card">
+          <div class="card-header">
+            <i data-lucide="map-pin"></i>
+            <h2>Geospatial Region Corridors</h2>
+          </div>
+          <div class="preset-buttons">
+            <button class="preset-btn active" data-region="badrinath" id="preset-badrinath">
+              <span class="region-title">🏔️ Rishikesh ➔ Badrinath</span>
+              <span class="region-sub">NH58 Himalayas Highway Pass</span>
+            </button>
+
+            <button class="preset-btn" data-region="sikkim_gangtok" id="preset-gangtok">
+              <span class="region-title">🌿 Siliguri ➔ Gangtok</span>
+              <span class="region-sub">NH10 Teesta River Valley Pass</span>
+            </button>
+
+            <button class="preset-btn" data-region="arunachal_tawang" id="preset-tawang">
+              <span class="region-title">🏔️ Guwahati ➔ Tawang</span>
+              <span class="region-sub">Sela Pass High Altitude Sector</span>
+            </button>
+
+            <button class="preset-btn" data-region="meghalaya_sohra" id="preset-sohra">
+              <span class="region-title">🌧️ Shillong ➔ Cherrapunji</span>
+              <span class="region-sub">Meghalaya Plateau Escarpment</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Real-time Landslide Simulation Card -->
+        <section class="panel-card simulation-card">
+          <div class="card-header">
+            <i data-lucide="zap"></i>
+            <h2>Live Rerouting Simulation</h2>
+          </div>
+          <p class="card-desc">Simulate a sudden catastrophic slope failure along active path to test dynamic obstacle avoidance geofencing.</p>
+          
+          <div class="sim-controls">
+            <button id="btn-simulate" class="btn-primary danger-glow">
+              <i data-lucide="alert-circle"></i>
+              <span>Simulate Slope Failure Event</span>
+            </button>
+            <button id="btn-reset-route" class="btn-secondary">
+              <i data-lucide="rotate-ccw"></i>
+              <span>Reset Primary Route</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Live Environmental Metrics Evaluator -->
+        <section class="panel-card">
+          <div class="card-header">
+            <i data-lucide="sliders"></i>
+            <h2>Geotechnical Evaluator</h2>
           </div>
           
-          <div class="gauge-status-row">
-            <div class="status-indicator">
-              <span class="label">Hazard Classification:</span>
-              <span id="lhi-class-text" class="value danger-text">CRITICAL / GEOFENCE ACTIVE</span>
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="slider-rain">24-Hour Rainfall</label>
+              <span id="val-rain" class="slider-value">135 mm</span>
             </div>
-            <div class="status-indicator">
-              <span class="label">Inference Engine:</span>
-              <span id="lhi-method-text" class="value">XGBoost ML + Infinite Slope</span>
+            <input type="range" id="slider-rain" min="0" max="250" value="135" step="1">
+            <div class="slider-ticks">
+              <span>0 mm</span>
+              <span>60 mm</span>
+              <span>120 mm</span>
+              <span>250 mm</span>
             </div>
           </div>
-        </div>
-      </section>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="slider-soil">Soil Saturation Index (SSI)</label>
+              <span id="val-soil" class="slider-value">0.88</span>
+            </div>
+            <input type="range" id="slider-soil" min="0.10" max="1.00" value="0.88" step="0.01">
+            <div class="slider-ticks">
+              <span>0.10 (Dry)</span>
+              <span>0.50</span>
+              <span>0.80 (Sat)</span>
+              <span>1.00</span>
+            </div>
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="slider-slope">Slope Angle</label>
+              <span id="val-slope" class="slider-value">44°</span>
+            </div>
+            <input type="range" id="slider-slope" min="5" max="60" value="44" step="0.5">
+            <div class="slider-ticks">
+              <span>5°</span>
+              <span>25°</span>
+              <span>45° (Steep)</span>
+              <span>60°</span>
+            </div>
+          </div>
+
+          <div class="action-buttons">
+            <button id="btn-fetch-open-meteo" class="btn-outline">
+              <i data-lucide="cloud-rain"></i>
+              <span>Live Weather Data</span>
+            </button>
+            <button id="btn-recalculate-lhi" class="btn-secondary">
+              <i data-lucide="cpu"></i>
+              <span>Evaluate LHI</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Landslide Hazard Index Gauge -->
+        <section class="panel-card gauge-card">
+          <div class="card-header">
+            <i data-lucide="activity"></i>
+            <h2>Landslide Hazard Index (LHI)</h2>
+          </div>
+          
+          <div class="gauge-display">
+            <div class="lhi-score-box">
+              <span id="lhi-val" class="lhi-score-text danger">0.864</span>
+              <span class="lhi-max">/ 1.00</span>
+            </div>
+            
+            <div class="lhi-bar-wrapper">
+              <div id="lhi-fill-bar" class="lhi-bar-fill danger-bg" style="width: 86.4%;"></div>
+              <div class="threshold-marker" style="left: 75%;" title="Danger Limit (0.75)">
+                <span class="marker-label">0.75 Limit</span>
+              </div>
+            </div>
+            
+            <div class="gauge-status-row">
+              <div class="status-indicator">
+                <span class="label">Hazard Classification:</span>
+                <span id="lhi-class-text" class="value danger-text">CRITICAL / GEOFENCE ACTIVE</span>
+              </div>
+              <div class="status-indicator">
+                <span class="label">Inference Engine:</span>
+                <span id="lhi-method-text" class="value">XGBoost ML + Infinite Slope</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
 
     </aside>
 
     <!-- Interactive Map Display & Control Panel -->
     <section class="map-container-panel">
+      <!-- Floating Turn-by-Turn HUD (Shown over map during active navigation) -->
+      <div id="nav-floating-hud" class="nav-floating-hud hidden">
+        <div class="hud-content">
+          <div class="hud-icon-circle">
+            <i data-lucide="navigation" id="hud-maneuver-icon"></i>
+          </div>
+          <div class="hud-instruction-group">
+            <div class="hud-dist-row">
+              <span id="hud-next-dist">In 400 m</span>
+              <span id="hud-eta-pill">ETA: --:--</span>
+            </div>
+            <div id="hud-next-instruction" class="hud-main-text">Depart origin along corridor</div>
+            <div id="hud-next-sub" class="hud-sub-text">Preparing turn-by-turn maneuvers...</div>
+          </div>
+          <button id="btn-hud-end" class="hud-end-btn" title="End Navigation">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      </div>
+
       <!-- Map Header Legend Bar -->
       <div class="map-overlay-header">
         <div class="legend-group">
@@ -246,15 +554,24 @@
           </div>
           <div class="legend-item">
             <span class="legend-line safe-alternate"></span>
-            <span>Safe Detour Route (Green Solid)</span>
+            <span>Safe Detour (Green Solid)</span>
           </div>
           <div class="legend-item">
             <span class="legend-circle hazard-geofence"></span>
-            <span>Hazard Geofence Polygon</span>
+            <span>Hazard Geofence</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-circle prevention-asset"></span>
+            <span>Prevention Assets</span>
           </div>
         </div>
 
         <div class="map-controls-group">
+          <label class="toggle-control">
+            <input type="checkbox" id="chk-prevention" checked>
+            <span class="slider-toggle"></span>
+            <span class="toggle-label">Prevention Assets</span>
+          </label>
           <label class="toggle-control">
             <input type="checkbox" id="chk-geofences" checked>
             <span class="slider-toggle"></span>
@@ -270,6 +587,16 @@
 
       <!-- Leaflet Map Container -->
       <div id="map" class="leaflet-map-frame"></div>
+
+      <!-- Floating Map Quick Action Buttons -->
+      <div class="map-quick-actions">
+        <button id="btn-map-recenter" class="map-fab-btn" title="Recenter on My Location">
+          <i data-lucide="crosshair"></i>
+        </button>
+        <button id="btn-map-heading" class="map-fab-btn" title="Toggle Compass / North Up">
+          <i data-lucide="compass" id="compass-icon"></i>
+        </button>
+      </div>
 
       <!-- Floating Map Info Badge -->
       <div class="map-info-badge">

@@ -83,7 +83,7 @@ def train_and_save_model():
     print(f"ROC AUC: {roc_auc_score(y_test, y_prob):.4f}")
     print("\nClassification Report:\n", classification_report(y_test, y_pred))
     
-    output_dir = "/Users/shashwatmishra/.gemini/antigravity/scratch/landslide_risk_engine/backend"
+    output_dir = os.path.join(os.path.dirname(__file__), "backend")
     os.makedirs(output_dir, exist_ok=True)
     model_path = os.path.join(output_dir, "landslide_model.pkl")
     joblib.dump(model, model_path)
