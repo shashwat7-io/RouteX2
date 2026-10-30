@@ -704,7 +704,6 @@ def compute_route(req: RouteRequest):
         "hazard_last_updated": now_iso,
         "geofences": geofences,
         "primary_route": primary_route,
-        "route": recalculated_route if is_rerouted else primary_route,
         "recalculated_safe_route": recalculated_route if is_rerouted else primary_route,
         "distance_impact_km": round((recalculated_route["distance_km"] - primary_route["distance_km"]), 2) if recalculated_route else 0.0,
         "eta_impact_min": round((recalculated_route["duration_min"] - primary_route["duration_min"]), 1) if recalculated_route else 0.0,
