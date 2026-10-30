@@ -139,13 +139,26 @@ class LHIEngine:
         lhi_ml = None
         if self.model is not None:
             try:
-                input_df = pd.DataFrame([{
+                feat_dict = {
                     'slope_angle': slope_angle,
                     'rainfall_24h': rainfall_24h,
+                    'rainfall_3d': round(rainfall_24h * 1.35, 2),
                     'soil_saturation': soil_saturation,
                     'elevation': elevation,
+                    'gsi_susceptibility': 0.50,
                     'veg_cover': veg_cover
-                }])
+                }
+                if hasattr(self.model, 'feature_names_in_'):
+                    expected = list(self.model.feature_names_in_)
+                    input_df = pd.DataFrame([{col: feat_dict.get(col, 0.0) for col in expected}])
+                else:
+                    input_df = pd.DataFrame([{
+                        'slope_angle': slope_angle,
+                        'rainfall_24h': rainfall_24h,
+                        'soil_saturation': soil_saturation,
+                        'elevation': elevation,
+                        'veg_cover': veg_cover
+                    }])
                 prob = self.model.predict_proba(input_df)[0][1]
                 lhi_ml = float(round(prob, 4))
             except Exception as e:
