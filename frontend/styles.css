@@ -64,6 +64,11 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
+/* Global Hidden Utility */
+.hidden {
+  display: none !important;
+}
+
 /* Header Styling */
 .app-header {
   height: 60px;
@@ -631,14 +636,20 @@ input[type=range] {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #e2e8f0;
+  background: var(--bg-main, #0b0f19);
 }
 
 .leaflet-map-frame {
   width: 100%;
   height: 100%;
-  background: #e2e8f0;
+  min-height: 100%;
+  background: var(--bg-main, #0b0f19);
   z-index: 1;
+}
+
+body.light-theme .map-container-panel,
+body.light-theme .leaflet-map-frame {
+  background: #f1f5f9;
 }
 
 /* Map Header Legend Bar */

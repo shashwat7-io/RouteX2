@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let safeRouteLayer = null;
   let geofenceLayersGroup = L.layerGroup();
   let hazardMarkersGroup = L.layerGroup();
+  let routeMarkersGroup = L.layerGroup();
   let preventionLayersGroup = L.layerGroup();
   let gsiInventoryLayerGroup = L.layerGroup();
   let gsiZonesLayerGroup = L.layerGroup();
@@ -344,12 +345,24 @@ document.addEventListener('DOMContentLoaded', () => {
       if (map) map.invalidateSize();
     }, 250);
 
+    setTimeout(() => {
+      if (map) map.invalidateSize();
+    }, 800);
+
     window.addEventListener('resize', () => {
       if (map) map.invalidateSize();
     });
 
     // Initial load: render corridor
     loadRegionRoute(activeRegionKey);
+  }
+
+  // Initialize Theme and Map Immediately
+  initTheme();
+  try {
+    initMap();
+  } catch (err) {
+    console.error("[RouteX] Error initializing map:", err);
   }
 
   // =========================================================================
@@ -548,55 +561,60 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  btnDetectGps.addEventListener('click', () => {
-    requestInitialLocation(false);
-  });
+  if (btnDetectGps) {
+    btnDetectGps.addEventListener('click', () => {
+      requestInitialLocation(false);
+    });
+  }
 
   // =========================================================================
   // 2. DESTINATION SEARCH WITH LIVE AUTOCOMPLETE
   // =========================================================================
   let autocompleteDebounceTimer = null;
 
-  destSearchInput.addEventListener('input', (e) => {
-    const query = e.target.value.trim();
+  if (destSearchInput) {
+    destSearchInput.addEventListener('input', (e) => {
+      const query = e.target.value.trim();
 
-    if (query.length > 0) {
-      btnClearDest.classList.remove('hidden');
-      btnCalcRoute.disabled = false;
-    } else {
+      if (query.length > 0) {
+        if (btnClearDest) btnClearDest.classList.remove('hidden');
+        if (btnCalcRoute) btnCalcRoute.disabled = false;
+      } else {
+        if (btnClearDest) btnClearDest.classList.add('hidden');
+        if (destAutocompleteList) destAutocompleteList.classList.add('hidden');
+        return;
+      }
+
+      if (query.length < 2) {
+        if (destAutocompleteList) destAutocompleteList.classList.add('hidden');
+        return;
+      }
+
+      clearTimeout(autocompleteDebounceTimer);
+      autocompleteDebounceTimer = setTimeout(() => {
+        fetchDestinationAutocomplete(query);
+      }, 300);
+    });
+
+    destSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (destAutocompleteList) destAutocompleteList.classList.add('hidden');
+        calculateLandslideSafeRoute();
+      }
+    });
+  }
+
+  if (btnClearDest) {
+    btnClearDest.addEventListener('click', () => {
+      if (destSearchInput) destSearchInput.value = '';
       btnClearDest.classList.add('hidden');
-      destAutocompleteList.classList.add('hidden');
-      return;
-    }
-
-    if (query.length < 2) {
-      destAutocompleteList.classList.add('hidden');
-      return;
-    }
-
-    clearTimeout(autocompleteDebounceTimer);
-    autocompleteDebounceTimer = setTimeout(() => {
-      fetchDestinationAutocomplete(query);
-    }, 300);
-  });
-
-  destSearchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      destAutocompleteList.classList.add('hidden');
-      calculateLandslideSafeRoute();
-    }
-  });
-
-
-  btnClearDest.addEventListener('click', () => {
-    destSearchInput.value = '';
-    btnClearDest.classList.add('hidden');
-    destAutocompleteList.classList.add('hidden');
-    selectedDestination = null;
-    btnCalcRoute.disabled = true;
-    if (destMarker) map.removeLayer(destMarker);
-  });
+      if (destAutocompleteList) destAutocompleteList.classList.add('hidden');
+      selectedDestination = null;
+      if (btnCalcRoute) btnCalcRoute.disabled = true;
+      if (destMarker && map) map.removeLayer(destMarker);
+    });
+  }
 
   // Quick Destination Chips
   document.querySelectorAll('.dest-chip').forEach(chip => {
@@ -711,9 +729,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
   // 3. ROUTE CALCULATION WITH INTEGRATED LANDSLIDE GEOFENCING
   // =========================================================================
-  btnCalcRoute.addEventListener('click', () => {
-    calculateLandslideSafeRoute();
-  });
+  if (btnCalcRoute) {
+    btnCalcRoute.addEventListener('click', () => {
+      calculateLandslideSafeRoute();
+    });
+  }
 
   async function calculateLandslideSafeRoute() {
     // 1. If destination not selected from dropdown yet, try auto-geocoding typed text
@@ -980,28 +1000,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  btnClearRoute.addEventListener('click', () => {
-    routeInfoCard.classList.add('hidden');
-    activeNavPanel.classList.add('hidden');
-    navFloatingHud.classList.add('hidden');
-    if (routeRiskCard) routeRiskCard.classList.add('hidden');
-    clearMapLayers();
-    activeNavigationRoute = null;
-    activeRouteCoordinates = [];
-    activeNavSteps = [];
-    hideAlertBanner();
-  });
+  if (btnClearRoute) {
+    btnClearRoute.addEventListener('click', () => {
+      if (routeInfoCard) routeInfoCard.classList.add('hidden');
+      if (activeNavPanel) activeNavPanel.classList.add('hidden');
+      if (navFloatingHud) navFloatingHud.classList.add('hidden');
+      if (routeRiskCard) routeRiskCard.classList.add('hidden');
+      clearMapLayers();
+      activeNavigationRoute = null;
+      activeRouteCoordinates = [];
+      activeNavSteps = [];
+      hideAlertBanner();
+    });
+  }
 
   // =========================================================================
   // 4. LIVE TURN-BY-TURN NAVIGATION & GPS WATCHER
   // =========================================================================
-  btnStartNav.addEventListener('click', () => {
-    startLiveNavigation(false);
-  });
+  if (btnStartNav) {
+    btnStartNav.addEventListener('click', () => {
+      startLiveNavigation(false);
+    });
+  }
 
-  btnSimulateDrive.addEventListener('click', () => {
-    startLiveNavigation(true);
-  });
+  if (btnSimulateDrive) {
+    btnSimulateDrive.addEventListener('click', () => {
+      startLiveNavigation(true);
+    });
+  }
 
   function startLiveNavigation(isSimulation = false) {
     if (!activeRouteCoordinates || activeRouteCoordinates.length < 2) {
@@ -1370,14 +1396,18 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshIcons();
   }
 
-  btnToggleStepsList.addEventListener('click', () => {
-    const isHidden = navFullStepsList.classList.toggle('hidden');
-    btnToggleStepsList.classList.toggle('expanded', !isHidden);
-  });
+  if (btnToggleStepsList) {
+    btnToggleStepsList.addEventListener('click', () => {
+      if (navFullStepsList) {
+        const isHidden = navFullStepsList.classList.toggle('hidden');
+        btnToggleStepsList.classList.toggle('expanded', !isHidden);
+      }
+    });
+  }
 
   // End Navigation Handlers
-  btnEndNav.addEventListener('click', stopLiveNavigation);
-  btnHudEnd.addEventListener('click', stopLiveNavigation);
+  if (btnEndNav) btnEndNav.addEventListener('click', stopLiveNavigation);
+  if (btnHudEnd) btnHudEnd.addEventListener('click', stopLiveNavigation);
 
   function stopLiveNavigation() {
     isNavigating = false;
@@ -1393,10 +1423,10 @@ document.addEventListener('DOMContentLoaded', () => {
       window.speechSynthesis.cancel();
     }
 
-    activeNavPanel.classList.add('hidden');
-    navFloatingHud.classList.add('hidden');
-    navOffrouteAlert.classList.add('hidden');
-    navProximityAlert.classList.add('hidden');
+    if (activeNavPanel) activeNavPanel.classList.add('hidden');
+    if (navFloatingHud) navFloatingHud.classList.add('hidden');
+    if (navOffrouteAlert) navOffrouteAlert.classList.add('hidden');
+    if (navProximityAlert) navProximityAlert.classList.add('hidden');
 
     if (routeInfoCard) routeInfoCard.classList.remove('hidden');
     setGpsStatus("active", "Navigation Ended");
@@ -1405,39 +1435,47 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Follow Me Recenter
-  btnToggleFollow.addEventListener('click', () => {
-    isFollowMode = !isFollowMode;
-    btnToggleFollow.classList.toggle('active', isFollowMode);
-    if (isFollowMode && userCurrentPosition) {
-      map.panTo([userCurrentPosition[1], userCurrentPosition[0]], { animate: true });
-    }
-  });
+  if (btnToggleFollow) {
+    btnToggleFollow.addEventListener('click', () => {
+      isFollowMode = !isFollowMode;
+      btnToggleFollow.classList.toggle('active', isFollowMode);
+      if (isFollowMode && userCurrentPosition && map) {
+        map.panTo([userCurrentPosition[1], userCurrentPosition[0]], { animate: true });
+      }
+    });
+  }
 
-  btnMapRecenter.addEventListener('click', () => {
-    if (userCurrentPosition) {
-      map.flyTo([userCurrentPosition[1], userCurrentPosition[0]], 15, { duration: 0.8 });
-    } else {
-      requestInitialLocation(false);
-    }
-  });
+  if (btnMapRecenter) {
+    btnMapRecenter.addEventListener('click', () => {
+      if (userCurrentPosition && map) {
+        map.flyTo([userCurrentPosition[1], userCurrentPosition[0]], 15, { duration: 0.8 });
+      } else {
+        requestInitialLocation(false);
+      }
+    });
+  }
 
   // Voice Mute Toggle
-  btnToggleVoice.addEventListener('click', () => {
-    isVoiceMuted = !isVoiceMuted;
-    btnToggleVoice.classList.toggle('active', !isVoiceMuted);
-    voiceIcon.setAttribute('data-lucide', isVoiceMuted ? 'volume-x' : 'volume-2');
-    refreshIcons();
-  });
+  if (btnToggleVoice) {
+    btnToggleVoice.addEventListener('click', () => {
+      isVoiceMuted = !isVoiceMuted;
+      btnToggleVoice.classList.toggle('active', !isVoiceMuted);
+      if (voiceIcon) voiceIcon.setAttribute('data-lucide', isVoiceMuted ? 'volume-x' : 'volume-2');
+      refreshIcons();
+    });
+  }
 
   // Heading Rotation Toggle
   let isHeadingUp = false;
-  btnMapHeading.addEventListener('click', () => {
-    isHeadingUp = !isHeadingUp;
-    const compassIcon = document.getElementById('compass-icon');
-    if (compassIcon) {
-      compassIcon.style.transform = isHeadingUp && userGpsHeading ? `rotate(${userGpsHeading}deg)` : 'rotate(0deg)';
-    }
-  });
+  if (btnMapHeading) {
+    btnMapHeading.addEventListener('click', () => {
+      isHeadingUp = !isHeadingUp;
+      const compassIcon = document.getElementById('compass-icon');
+      if (compassIcon) {
+        compassIcon.style.transform = isHeadingUp && userGpsHeading ? `rotate(${userGpsHeading}deg)` : 'rotate(0deg)';
+      }
+    });
+  }
 
   // =========================================================================
   // 6. MAP GEOFENCES, HEATMAP & DUAL ROUTE RENDERING (PRESERVED)
@@ -1858,18 +1896,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Sliders input listeners
-  sliderRain.addEventListener('input', (e) => {
-    valRain.textContent = `${e.target.value} mm`;
-    evaluateSlidersLHI();
-  });
-  sliderSoil.addEventListener('input', (e) => {
-    valSoil.textContent = `${e.target.value}`;
-    evaluateSlidersLHI();
-  });
-  sliderSlope.addEventListener('input', (e) => {
-    valSlope.textContent = `${e.target.value}°`;
-    evaluateSlidersLHI();
-  });
+  if (sliderRain && valRain) {
+    sliderRain.addEventListener('input', (e) => {
+      valRain.textContent = `${e.target.value} mm`;
+      evaluateSlidersLHI();
+    });
+  }
+  if (sliderSoil && valSoil) {
+    sliderSoil.addEventListener('input', (e) => {
+      valSoil.textContent = `${e.target.value}`;
+      evaluateSlidersLHI();
+    });
+  }
+  if (sliderSlope && valSlope) {
+    sliderSlope.addEventListener('input', (e) => {
+      valSlope.textContent = `${e.target.value}°`;
+      evaluateSlidersLHI();
+    });
+  }
 
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -1889,30 +1933,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  btnSimulate.addEventListener('click', () => {
-    triggerLandslideSimulation(currentRegionData.start, currentRegionData.end);
-  });
-  btnResetRoute.addEventListener('click', () => {
-    loadRegionRoute(activeRegionKey);
-  });
-  btnFetchMeteo.addEventListener('click', fetchOpenMeteoData);
-  btnRecalcLHI.addEventListener('click', evaluateSlidersLHI);
+  if (btnSimulate) {
+    btnSimulate.addEventListener('click', () => {
+      triggerLandslideSimulation(currentRegionData.start, currentRegionData.end);
+    });
+  }
+  if (btnResetRoute) {
+    btnResetRoute.addEventListener('click', () => {
+      loadRegionRoute(activeRegionKey);
+    });
+  }
+  if (btnFetchMeteo) {
+    btnFetchMeteo.addEventListener('click', fetchOpenMeteoData);
+  }
+  if (btnRecalcLHI) {
+    btnRecalcLHI.addEventListener('click', evaluateSlidersLHI);
+  }
 
-  chkGeofences.addEventListener('change', () => {
-    if (chkGeofences.checked) {
-      if (currentGeoJSONGeofences) drawGeofencePolygons(currentGeoJSONGeofences);
-    } else {
-      geofenceLayersGroup.clearLayers();
-    }
-  });
+  if (chkGeofences) {
+    chkGeofences.addEventListener('change', () => {
+      if (chkGeofences.checked) {
+        if (currentGeoJSONGeofences) drawGeofencePolygons(currentGeoJSONGeofences);
+      } else {
+        geofenceLayersGroup.clearLayers();
+      }
+    });
+  }
 
-  chkHeatmap.addEventListener('change', () => {
-    if (chkHeatmap.checked) {
-      if (currentGeoJSONGeofences) drawHeatmapOverlay(currentGeoJSONGeofences);
-    } else {
-      if (heatmapLayer) map.removeLayer(heatmapLayer);
-    }
-  });
+  if (chkHeatmap) {
+    chkHeatmap.addEventListener('change', () => {
+      if (chkHeatmap.checked) {
+        if (currentGeoJSONGeofences) drawHeatmapOverlay(currentGeoJSONGeofences);
+      } else {
+        if (heatmapLayer && map) map.removeLayer(heatmapLayer);
+      }
+    });
+  }
 
   // =========================================================================
   // LANDSLIDE PREVENTION & SLOPE STABILIZATION SYSTEM
@@ -2774,7 +2830,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Launch Leaflet Map on Startup
-  initMap();
+  if (!map) {
+    try {
+      initMap();
+    } catch (e) {
+      console.error("[RouteX] Error initializing map on startup:", e);
+    }
+  }
 
   // Try silent initial location check
   requestInitialLocation(true);
